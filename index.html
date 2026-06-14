@@ -231,6 +231,11 @@
       <button data-c="sq">x²</button>
       <button data-c="log">Log</button>
     </div>
+    <div class="row" style="margin-top:9px;margin-bottom:4px"><span>Value from</span></div>
+    <div class="seg" id="seg-gran">
+      <button data-g="letter" class="on">Per letter</button>
+      <button data-g="word">Per word</button>
+    </div>
   </div>
 
   <div class="grp">
@@ -367,6 +372,7 @@ const pCode=new Int32Array(N), pBook=new Uint8Array(N), pGChap=new Int16Array(N)
 const xInLine=new Float32Array(N);        // world x within verse line (with word gaps)
 const bookLine=new Int32Array(N);         // 0-based line within its book
 const bookLetter=new Int32Array(N);       // 0-based letter within its book
+const pWsum=new Int32Array(N), pWsumSof=new Int32Array(N);  // word total gematria (shared by word's letters)
 const BK=[];                              // per-book meta {lines,letters,maxLine}
 const VERSES=[];
 (function build(){
@@ -381,9 +387,11 @@ const VERSES=[];
         let x=0, col=0; const vstart=i;
         for(let wi=0;wi<verse.length;wi++){
           const word=verse[wi];
+          let ws=0,wss=0; for(const ch of word){ const gg=GEM[ch]||0; ws+=gg; wss+=SOFIT[ch]||gg; }
           for(let li=0;li<word.length;li++){
             const chr=word[li], code=chr.charCodeAt(0);
             const g=GEM[chr]||0; gemStd[i]=g; gemSof[i]=SOFIT[chr]||g;
+            pWsum[i]=ws; pWsumSof[i]=wss;
             pBook[i]=b; pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen;
             pCode[i]=code; pGChap[i]=gch; xInLine[i]=x; bookLine[i]=bl; bookLetter[i]=blet;
             x+=LETTER_GAP; col++; i++; blet++;
@@ -400,6 +408,8 @@ const VERSES=[];
     meta.lines=bl; meta.letters=blet; BK.push(meta);
   }
 })();
+let MAXW=1, MAXWsof=1;
+for(let k=0;k<N;k++){ if(pWsum[k]>MAXW)MAXW=pWsum[k]; if(pWsumSof[k]>MAXWsof)MAXWsof=pWsumSof[k]; }
 const textMask=new Uint8Array(N);   // 1 = letter is in current text selection
 
 /* ---- aleph-bet index + per-letter filter (base + final toggle together) -- */
@@ -599,7 +609,7 @@ function updateLabels(){              // Genesis peak labels (only when Genesis 
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
-  books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false};
+  books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter'};
 
 function curveFn(v){
   switch(state.curve){
@@ -627,8 +637,10 @@ function recompute(){
   for(let k=0;k<N;k++){
     const b=pBook[k];
     if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
-    const g=state.sofit?gemSof[k]:gemStd[k];
-    let nv=(g-lo)/span; if(nv<0)nv=0; else if(nv>1)nv=1;
+    let nv;
+    if(state.gran==='word'){ nv=(state.sofit?pWsumSof[k]:pWsum[k])/(state.sofit?MAXWsof:MAXW); }
+    else { const g=state.sofit?gemSof[k]:gemStd[k]; nv=(g-lo)/span; }
+    if(nv<0)nv=0; else if(nv>1)nv=1;
     const cv=curveFn(nv);
     const hv = lay ? Math.round(cv*(LAYER_BANDS-1))/(LAYER_BANDS-1) : cv;
     const h = hv*HEIGHT_MAX*state.exag;
@@ -698,8 +710,9 @@ function drawLegend(){
     const el=document.createElement('span');
     el.textContent=v; el.style.left=(f*100)+'%'; wrap.appendChild(el);
   });
-  document.getElementById('legcap').textContent=
-    `gematria ${lo}–${hi} → elevation · ${({lin:'linear',sqrt:'√',sq:'x²',log:'log'})[state.curve]}`;
+  document.getElementById('legcap').textContent= state.gran==='word'
+    ? `word gematria → elevation · ${({lin:'linear',sqrt:'√',sq:'x²',log:'log'})[state.curve]}`
+    : `gematria ${lo}–${hi} → elevation · ${({lin:'linear',sqrt:'√',sq:'x²',log:'log'})[state.curve]}`;
 }
 
 /* ---- UI wiring ------------------------------------------------------------ */
@@ -866,6 +879,13 @@ document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('c
   material.uniforms.uLayers.value=state.layers?1:0; material.uniforms.uGlyph.value=state.glyph?1:0;
   recompute();
 }));
+/* value source: per-letter vs per-word gematria (rebuilds the terrain heights) */
+document.querySelectorAll('#seg-gran button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-gran button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state.gran=b.dataset.g;
+  if(state.mode!=='meaning'&&state.mode!=='map') recompute();
+  drawLegend();
+}));
 
 /* ---- reading panel: highlight text -> reflect only those letters ---------- */
 const BOOK_SHORT=BOOKS.map(b=>b.name.slice(0,3));
@@ -920,6 +940,13 @@ function mapSelection(){
 }
 $('reader-clear').addEventListener('click',()=>{
   clearText(); const s=window.getSelection(); if(s) s.removeAllRanges(); applySelection();
+});
+/* double-click a verse in the reader → float in close to that section */
+$('reader-body').addEventListener('dblclick',e=>{
+  const rv=e.target.closest('.rv'); if(!rv) return;
+  if(state.mode==='meaning'||state.mode==='map') return;
+  const gi=+rv.dataset.gi, n=+rv.dataset.n;
+  const bb=boundsOf([[gi,gi+n]]); if(bb) flyTo(bb.cx,bb.cy,bb.cz, bb.r*1.3+28);
 });
 
 /* ---- custom orbit / zoom / pan controls ---------------------------------- */
@@ -1049,6 +1076,13 @@ function doHover(){
   tip.style.left=tx+'px'; tip.style.top=ty+'px';
 }
 dom.addEventListener('pointerleave',()=>tip.classList.remove('on'));
+/* double-click a letter → zoom into it */
+dom.addEventListener('dblclick',e=>{
+  mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mouse,camera);
+  for(const h of ray.intersectObject(points)){ if(sel[h.index]>-0.5){
+    const pa=geom.attributes.position.array,k=h.index; flyTo(pa[k*3],pa[k*3+1],pa[k*3+2],42); break; } }
+});
 
 /* ---- resize + render loop ------------------------------------------------- */
 addEventListener('resize',()=>{
