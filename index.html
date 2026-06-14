@@ -75,7 +75,7 @@
     background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;
     padding:6px 9px;cursor:pointer;transition:.15s}
   .seg button:hover,.chip:hover,.act:hover{color:var(--ink);border-color:var(--panelbrd)}
-  .seg button.on,.chip.on{color:var(--void);background:var(--gold);border-color:var(--gold);font-weight:600}
+  .seg button.on,.chip.on,.act.on{color:var(--void);background:var(--gold);border-color:var(--gold);font-weight:600}
   .chips{display:flex;flex-wrap:wrap;gap:4px;max-height:118px;overflow-y:auto;padding:2px}
   .chip{padding:4px 0;width:30px;text-align:center;font-family:var(--mono);font-size:10px}
   .acts{display:flex;gap:6px;margin-top:9px;flex-wrap:wrap}
@@ -147,6 +147,12 @@
   .lchip .lv{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px}
   .lchip.on{background:var(--gold);border-color:var(--gold)}
   .lchip.on .lg,.lchip.on .lv{color:var(--void)}
+  /* v1.4 search box */
+  #search{top:18px;left:50%;transform:translateX(-50%);z-index:22;padding:8px 10px;width:340px;max-width:calc(100vw - 36px)}
+  #search-in{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--panelbrd);
+    border-radius:8px;color:var(--ink);font-family:var(--sans);font-size:12.5px;padding:8px 11px;outline:none}
+  #search-in::placeholder{color:var(--dim)}
+  #search-hint{font-size:10px;color:var(--gold);margin:5px 2px 0;min-height:12px;letter-spacing:.04em}
   /* v1.2 books + reader */
   .bchip{font-family:var(--sans);font-size:10.5px;letter-spacing:.04em;color:var(--dim);
     background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;
@@ -169,7 +175,8 @@
     #reset{top:14px;right:12px;bottom:auto}
     #hint{display:none}
     #modes{left:12px;right:auto;top:auto;bottom:12px}
-    #reader{left:8px;right:8px;width:auto;max-width:none;top:104px;bottom:auto;max-height:42vh}
+    #search{left:8px;right:8px;width:auto;max-width:none;transform:none;top:8px}
+    #reader{left:8px;right:8px;width:auto;max-width:none;top:150px;bottom:auto;max-height:38vh}
   }
 </style>
 </head>
@@ -195,6 +202,12 @@
     <button data-m="meaning">Meaning</button>
     <button data-m="map">Map</button>
   </div>
+  <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
+</div>
+<div id="search" class="panel">
+  <input id="search-in" type="text" autocomplete="off" spellcheck="false"
+    placeholder="Jump to · e.g. Genesis 1:1 · Exodus 3 · Lev 19:18">
+  <div id="search-hint"></div>
 </div>
 <div id="reader" class="panel">
   <div class="rhead">
@@ -241,6 +254,7 @@
     <div class="seg" id="seg-render">
       <button data-r="dots" class="on">Dots</button>
       <button data-r="layers">Layers</button>
+      <button data-r="glyph">Letters</button>
     </div>
     <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">3.6</span></div>
     <input type="range" id="s-size" min="0.5" max="9" step="0.1" value="3.6">
@@ -442,36 +456,61 @@ function sprite(){
   const t=new THREE.Texture(cv);t.needsUpdate=true;return t;
 }
 
+/* glyph atlas — render the actual Hebrew letter at each point ("Letters" mode) */
+const GLYPHS=['א','ב','ג','ד','ה','ו','ז','ח','ט','י','כ','ך','ל','מ','ם','נ','ן','ס','ע','פ','ף','צ','ץ','ק','ר','ש','ת'];
+const GMAP={}; GLYPHS.forEach((c,i)=>GMAP[c]=i);
+const ACOLS=7, AROWS=4, ACELL=128;
+function glyphAtlas(){
+  const cv=document.createElement('canvas'); cv.width=ACOLS*ACELL; cv.height=AROWS*ACELL;
+  const g=cv.getContext('2d'); g.fillStyle='#fff'; g.textAlign='center'; g.textBaseline='middle';
+  g.font='bold '+Math.floor(ACELL*0.7)+'px Georgia,"Times New Roman",serif';
+  GLYPHS.forEach((ch,i)=>{ const c=i%ACOLS, r=(i/ACOLS)|0; g.fillText(ch,c*ACELL+ACELL/2,r*ACELL+ACELL*0.56); });
+  const t=new THREE.Texture(cv); t.flipY=false; t.minFilter=THREE.LinearFilter; t.magFilter=THREE.LinearFilter; t.needsUpdate=true; return t;
+}
+const aGlyph=new Float32Array(N);
+for(let k=0;k<N;k++){ const gi=GMAP[String.fromCharCode(pCode[k])]; aGlyph[k]=gi===undefined?0:gi; }
+
 const geom=new THREE.BufferGeometry();
 geom.setAttribute('position',new THREE.BufferAttribute(positions,3));
 geom.setAttribute('aColor',new THREE.BufferAttribute(colors,3));
 geom.setAttribute('aSel',new THREE.BufferAttribute(sel,1));
+geom.setAttribute('aGlyph',new THREE.BufferAttribute(aGlyph,1));
 
 const material=new THREE.ShaderMaterial({
-  uniforms:{uSize:{value:3.6},uScale:{value:440.0},uTex:{value:sprite()},uLayers:{value:0.0}},
+  uniforms:{uSize:{value:3.6},uScale:{value:440.0},uTex:{value:sprite()},uLayers:{value:0.0},
+    uGlyph:{value:0.0},uAtlas:{value:glyphAtlas()},uACols:{value:ACOLS},uARows:{value:AROWS}},
   transparent:true, depthWrite:false, blending:THREE.NormalBlending,
   vertexShader:`
-    attribute vec3 aColor; attribute float aSel;
-    uniform float uSize, uScale, uLayers; varying vec3 vColor; varying float vSel;
+    attribute vec3 aColor; attribute float aSel; attribute float aGlyph;
+    uniform float uSize, uScale, uLayers, uGlyph; varying vec3 vColor; varying float vSel, vGlyph;
     void main(){
-      vColor=aColor; vSel=aSel;
+      vColor=aColor; vSel=aSel; vGlyph=aGlyph;
       vec4 mv=modelViewMatrix*vec4(position,1.0);
       if(aSel<-0.5){ gl_Position=vec4(2.0,2.0,2.0,1.0); gl_PointSize=0.0; return; }
       float s=uSize; if(aSel<0.5) s*=0.55;
-      s *= mix(1.0, 3.4, uLayers);            // layers: fatten discs so they fuse into strata
+      s *= mix(1.0,3.4,uLayers);
+      if(uGlyph>0.5) s*=3.0;                  // glyphs need to be larger to read
       gl_PointSize=max(1.0, s*(uScale/ -mv.z));
       gl_Position=projectionMatrix*mv;
     }`,
   fragmentShader:`
-    uniform sampler2D uTex; uniform float uLayers; varying vec3 vColor; varying float vSel;
+    uniform sampler2D uTex, uAtlas; uniform float uLayers, uGlyph, uACols, uARows;
+    varying vec3 vColor; varying float vSel, vGlyph;
     void main(){
-      vec4 t=texture2D(uTex,gl_PointCoord);
-      float d=distance(gl_PointCoord,vec2(0.5));
-      float a = uLayers>0.5 ? (d<0.5?1.0:0.0) : t.a;   // layers: flat solid discs
+      float a;
+      if(uGlyph>0.5){
+        float c=mod(vGlyph,uACols), r=floor(vGlyph/uACols);
+        vec2 uv=(vec2(c,r)+gl_PointCoord)/vec2(uACols,uARows);
+        a=texture2D(uAtlas,uv).a;
+      } else {
+        vec4 t=texture2D(uTex,gl_PointCoord);
+        float d=distance(gl_PointCoord,vec2(0.5));
+        a = uLayers>0.5 ? (d<0.5?1.0:0.0) : t.a;
+      }
       if(a<0.03) discard;
       vec3 c=vColor;
       if(vSel<0.5 && vSel>-0.5){ c=vec3(0.34,0.34,0.39); a*=0.28; }
-      else if(uLayers<0.5){ a=min(1.0,a*1.5); }
+      else if(uLayers<0.5 && uGlyph<0.5){ a=min(1.0,a*1.5); }
       gl_FragColor=vec4(c,a);
     }`
 });
@@ -560,7 +599,7 @@ function updateLabels(){              // Genesis peak labels (only when Genesis 
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
-  books:new Set([0,1,2,3,4]), layout:'string'};
+  books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false};
 
 function curveFn(v){
   switch(state.curve){
@@ -779,11 +818,53 @@ document.querySelectorAll('#seg-mode button').forEach(b=>b.addEventListener('cli
   document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); setMode(b.dataset.m);
 }));
+/* fly-through tour toggle */
+$('tour').addEventListener('click',()=>{ state.tour=!state.tour; tween=null; $('tour').classList.toggle('on',state.tour); });
+
+/* jump-to-reference search */
+const ALIAS={genesis:0,gen:0,bereshit:0,'בראשית':0,exodus:1,exod:1,exo:1,ex:1,shemot:1,'שמות':1,
+  leviticus:2,lev:2,vayikra:2,'ויקרא':2,numbers:3,num:3,nu:3,bamidbar:3,'במדבר':3,
+  deuteronomy:4,deut:4,deu:4,dt:4,devarim:4,'דברים':4};
+function parseRef(q){
+  q=(q||'').trim().toLowerCase(); if(!q) return null;
+  const m=q.match(/^([a-zא-ת]+)\s*\.?\s*(\d+)?\s*[:.\s]?\s*(\d+)?$/); if(!m) return null;
+  let b=ALIAS[m[1]];
+  if(b===undefined){ const k=Object.keys(ALIAS).filter(x=>x.startsWith(m[1])); if(k.length) b=ALIAS[k[0]]; }
+  if(b===undefined) return null;
+  return {b, c:m[2]?+m[2]:null, v:m[3]?+m[3]:null};
+}
+function gotoRef(ref){
+  if(!ref) return false;
+  if(!state.books.has(ref.b)){ state.books.add(ref.b);
+    const chip=document.querySelector('.bchip[data-b="'+ref.b+'"]'); if(chip)chip.classList.add('on'); refreshBooks(); }
+  if(state.mode==='meaning'||state.mode==='map'){
+    document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.toggle('on',x.dataset.m==='scroll')); setMode('scroll'); }
+  state.tour=false; $('tour').classList.remove('on');
+  const ranges=[]; let firstGi=-1;
+  for(const V of VERSES){ if(V.b!==ref.b)continue; if(ref.c&&V.c!==ref.c)continue; if(ref.v&&V.v!==ref.v)continue;
+    ranges.push([V.gi,V.gi+V.n]); if(firstGi<0)firstGi=V.gi; }
+  if(!ranges.length) return false;
+  const bb=boundsOf(ranges); if(!bb) return false;
+  flyTo(bb.cx,bb.cy,bb.cz, bb.r*2.2+60);
+  textMask.fill(0); for(const rg of ranges) for(let k=rg[0];k<rg[1];k++) textMask[k]=1;
+  state.textActive=true; applySelection();
+  const body=$('reader-body'); if(body){ body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
+    const el=body.querySelector('.rv[data-gi="'+firstGi+'"]'); if(el){ el.classList.add('hot'); el.scrollIntoView({block:'center'}); } }
+  return true;
+}
+const _si=$('search-in'), _sh=$('search-hint');
+_si.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; e.preventDefault();
+  const ref=parseRef(_si.value);
+  if(!ref){ _sh.textContent='Try: Genesis 1:1 · Exodus 3 · Lev 19:18'; return; }
+  _sh.textContent = gotoRef(ref) ? ('→ '+BOOKS[ref.b].name+' '+(ref.c||'')+(ref.v?(':'+ref.v):'')) : 'not found';
+});
 /* render style (dots / tectonic layers) — works in every layout mode */
 document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-render button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); state.layers=(b.dataset.r==='layers');
-  material.uniforms.uLayers.value=state.layers?1:0; recompute();
+  b.classList.add('on'); const r=b.dataset.r;
+  state.layers=(r==='layers'); state.glyph=(r==='glyph');
+  material.uniforms.uLayers.value=state.layers?1:0; material.uniforms.uGlyph.value=state.glyph?1:0;
+  recompute();
 }));
 
 /* ---- reading panel: highlight text -> reflect only those letters ---------- */
@@ -823,17 +904,18 @@ function mapSelection(){
   const body=$('reader-body');
   body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
   textMask.fill(0); let any=false;
-  const rvs=body.querySelectorAll('.rv');
+  const rvs=body.querySelectorAll('.rv'); const ranges=[];
   for(const rv of rvs){
     if(!r.intersectsNode(rv)) continue;
     const gi=+rv.dataset.gi, n=+rv.dataset.n;
     for(let k=gi;k<gi+n;k++) textMask[k]=1;
-    rv.classList.add('hot'); any=true;
+    ranges.push([gi,gi+n]); rv.classList.add('hot'); any=true;
   }
   if(any){
     state.textActive=true; applySelection();
     let cnt=0; for(let k=0;k<N;k++) cnt+=textMask[k];
     $('reader-count').textContent=cnt.toLocaleString('en-US')+' letters';
+    if(state.mode!=='meaning'&&state.mode!=='map'){ const bb=boundsOf(ranges); if(bb) flyTo(bb.cx,bb.cy,bb.cz,bb.r*2.0+70); }
   }
 }
 $('reader-clear').addEventListener('click',()=>{
@@ -883,7 +965,29 @@ function setMode(m){
 let userMoved=false;
 const dom=renderer.domElement;
 const ptr=new Map(); let mode=null, last={x:0,y:0}, pinch=0;
-function markUser(){userMoved=true;}
+function markUser(){userMoved=true; tween=null;
+  if(state.tour){ state.tour=false; const tb=document.getElementById('tour'); if(tb)tb.classList.remove('on'); }}
+/* fly-to (smooth zoom into a section) + auto fly-through tour */
+let tween=null, tourP=0;
+function tourStep(){
+  if(state.mode==='sphere'||state.mode==='meaning'||state.mode==='map'){ sph.theta+=0.0013; applyCam(); return; }
+  geom.computeBoundingBox(); const bb=geom.boundingBox; if(!bb){applyCam();return;}
+  const ex=bb.max.x-bb.min.x, ey=bb.max.y-bb.min.y, cz=(bb.min.z+bb.max.z)/2;
+  tourP+=0.0009; if(tourP>1)tourP=0;
+  if(ex>=ey){ target.set(bb.max.x+(bb.min.x-bb.max.x)*tourP,(bb.min.y+bb.max.y)/2,cz);
+    sph.r=Math.max(130,ey*1.3+150); sph.phi=1.02; sph.theta=0.28; }
+  else { target.set((bb.min.x+bb.max.x)/2, bb.max.y+(bb.min.y-bb.max.y)*tourP, cz);
+    sph.r=Math.max(130,ex*1.6+150); sph.phi=0.95; sph.theta=0.5; }
+  applyCam();
+}
+function flyTo(cx,cy,cz,r){ tween={t:0,fT:target.clone(),tT:new THREE.Vector3(cx,cy,cz),fR:sph.r,tR:Math.max(60,r)}; userMoved=true; }
+function boundsOf(ranges){
+  const pa=geom.attributes.position.array; let cx=0,cy=0,cz=0,n=0;
+  for(const rg of ranges) for(let k=rg[0];k<rg[1];k++){cx+=pa[k*3];cy+=pa[k*3+1];cz+=pa[k*3+2];n++;}
+  if(!n) return null; cx/=n;cy/=n;cz/=n; let r=0;
+  for(const rg of ranges) for(let k=rg[0];k<rg[1];k++){const dx=pa[k*3]-cx,dy=pa[k*3+1]-cy,dz=pa[k*3+2]-cz;const d=Math.sqrt(dx*dx+dy*dy+dz*dz);if(d>r)r=d;}
+  return {cx,cy,cz,r:Math.max(r,6)};
+}
 dom.addEventListener('pointerdown',e=>{
   dom.setPointerCapture(e.pointerId); ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
   markUser();
@@ -953,7 +1057,13 @@ addEventListener('resize',()=>{
 });
 function animate(){
   requestAnimationFrame(animate);
-  if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
+  if(state.tour){ tourStep(); }
+  else if(tween){ tween.t=Math.min(1,tween.t+0.05);
+    const e=tween.t<0.5?2*tween.t*tween.t:1-Math.pow(-2*tween.t+2,2)/2;
+    target.lerpVectors(tween.fT,tween.tT,e); sph.r=tween.fR+(tween.tR-tween.fR)*e; applyCam();
+    if(tween.t>=1) tween=null;
+  }
+  else if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
   updateLabels();
   renderer.render(scene,camera);
