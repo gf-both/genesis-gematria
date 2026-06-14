@@ -147,6 +147,15 @@
   .lchip .lv{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px}
   .lchip.on{background:var(--gold);border-color:var(--gold)}
   .lchip.on .lg,.lchip.on .lv{color:var(--void)}
+  /* v1.2 books + reader */
+  .bchip{font-family:var(--sans);font-size:10.5px;letter-spacing:.04em;color:var(--dim);
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:7px;
+    padding:5px 8px;cursor:pointer;transition:.15s}
+  .bchip:hover{color:var(--ink);border-color:var(--panelbrd)}
+  .bchip.on{color:var(--void);background:var(--gold);border-color:var(--gold);font-weight:600}
+  .rbook{font-family:var(--serif);color:var(--gold);font-size:15px;margin:14px 0 6px;
+    border-bottom:1px solid rgba(227,178,60,.25);padding-bottom:4px}
+  .rv.hot{background:rgba(227,178,60,.14);border-radius:6px;box-shadow:inset 2px 0 0 var(--gold)}
   /* v1.1 enrichment-view peak labels */
   #vlabels{position:fixed;inset:0;z-index:14;pointer-events:none}
   .vlabel{position:absolute;transform:translate(-50%,-130%);font-family:var(--serif);font-size:13px;
@@ -165,11 +174,11 @@
 </style>
 </head>
 <body>
-<div id="loader"><div class="br">בְּרֵאשִׁית</div><div class="sub">Genesis · Topology of Gematria</div></div>
+<div id="loader"><div class="br">תּוֹרָה</div><div class="sub">Torah · Topology of Gematria</div></div>
 
 <div id="title" class="panel">
-  <div class="he">בְּרֵאשִׁית</div>
-  <h1>Genesis · Topology of Gematria</h1>
+  <div class="he">תּוֹרָה</div>
+  <h1>Torah · Topology of Gematria</h1>
   <div class="meta">
     <span>Letters</span><b class="num" id="t-let">—</b>
     <span>Verses</span><b class="num" id="t-ver">—</b>
@@ -180,8 +189,8 @@
 <div id="modes" class="panel">
   <span class="lbl">Layout</span>
   <div class="seg" id="seg-mode">
-    <button data-m="terrain" class="on">Terrain</button>
-    <button data-m="scroll">Scroll</button>
+    <button data-m="terrain">Terrain</button>
+    <button data-m="scroll" class="on">Scroll</button>
     <button data-m="sphere">Sphere</button>
     <button data-m="meaning">Meaning</button>
     <button data-m="map">Map</button>
@@ -238,6 +247,20 @@
   </div>
 
   <div class="grp">
+    <span class="lbl">Books</span>
+    <div class="chips" id="bchips"></div>
+    <div class="acts">
+      <button class="act" id="bk-all">All</button>
+      <button class="act" id="bk-clear">Clear</button>
+    </div>
+    <div class="row" style="margin-top:10px;margin-bottom:4px"><span>Arrange</span></div>
+    <div class="seg" id="seg-layout">
+      <button data-l="stack">Stack</button>
+      <button data-l="string" class="on">String</button>
+    </div>
+  </div>
+
+  <div class="grp">
     <span class="lbl">Highlight · chapters</span>
     <div class="chips" id="chips"></div>
     <div class="acts">
@@ -280,19 +303,20 @@
 
 <div id="vlabels"></div>
 <script src="three.min.js"></script>
-<script src="genesis_data.js"></script>
-<script src="genesis_en.js"></script>
+<script src="torah_data.js"></script>
+<script src="torah_en.js"></script>
 <script>
 /* ============================================================================
    Genesis · Topology of Gematria
-   Edit the logic below freely. Data is window.GENESIS_DATA (chapters→verses→words),
-   each word a string of Hebrew consonants. Heights = gematria, computed here at runtime.
+   v1.2 · Data is window.TORAH (5 books → chapters → verses → words of Hebrew consonants)
+   and window.TORAH_EN (KJV, aligned). Heights = gematria, computed here at runtime.
    ========================================================================== */
 (function(){
 "use strict";
 const REDUCED = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-const DATA = window.GENESIS_DATA;
-const EN = window.GENESIS_EN || [];
+const BOOKS = window.TORAH;            // [{id,name,he,chapters:[[[w..]..]..]}]
+const EN = window.TORAH_EN || [];      // [book][chapter][verse] English
+const BOOK_TINT = [[0.89,0.70,0.24],[0.12,0.56,0.56],[0.32,0.69,0.41],[0.90,0.48,0.17],[0.62,0.50,0.85]];
 
 /* ---- gematria (Mispar Hechrachi) + optional sofit (Mispar Gadol) ---------- */
 const GEM = {א:1,ב:2,ג:3,ד:4,ה:5,ו:6,ז:7,ח:8,ט:9,י:10,
@@ -316,82 +340,50 @@ const LETTER_GAP=1.0, WORD_GAP=0.7, LINE_GAP=1.0, HEIGHT_MAX=55;
 /* scroll mode = continuous wrapped columns (sofer-like); sphere = globe relief */
 const SCROLL_W=28, SCROLL_H=60, SCROLL_COLGAP=6, SPHERE_R=320;
 
-/* ---- flatten data into per-point arrays ----------------------------------- */
+/* ---- flatten ALL books into per-point arrays (v1.2 Torah) ----------------- */
 let N=0;
-for(const ch of DATA) for(const v of ch) for(const w of v) N+=w.length;
+for(const b of BOOKS) for(const ch of b.chapters) for(const v of ch) for(const w of v) N+=w.length;
 
 const positions=new Float32Array(N*3);
 const colors=new Float32Array(N*3);
 const sel=new Float32Array(N);            // 1 full · 0 dimmed · -1 hidden
-const gemStd=new Int16Array(N);
-const gemSof=new Int16Array(N);
-const pChap=new Int16Array(N);
-const pVerse=new Int16Array(N);
-const pCol=new Int16Array(N);             // 1-based position on its line
-const pLineLen=new Int16Array(N);
-const pCode=new Int32Array(N);            // unicode of consonant
-/* per-mode base coordinates (height z is added at render time from gematria) */
-const baseTerX=new Float32Array(N), baseTerY=new Float32Array(N);   // terrain
-const baseScrX=new Float32Array(N), baseScrY=new Float32Array(N);   // scroll
-const dirX=new Float32Array(N), dirY=new Float32Array(N), dirZ=new Float32Array(N); // sphere unit dirs
-
-function centre(ax,ay){
-  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
-  for(let k=0;k<N;k++){const X=ax[k],Y=ay[k];
-    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
-  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
-  for(let k=0;k<N;k++){ax[k]-=cx;ay[k]-=cy;}
-}
-(function build(){
-  let i=0, line=0;
-  for(let c=0;c<DATA.length;c++){
-    const chap=DATA[c];
-    for(let vv=0;vv<chap.length;vv++){
-      const verse=chap[vv];
-      const lineLen=verse.reduce((s,w)=>s+w.length,0);
-      let x=0, col=0;
-      for(let wi=0;wi<verse.length;wi++){
-        const word=verse[wi];
-        for(let li=0;li<word.length;li++){
-          const ch=word[li], code=ch.charCodeAt(0);
-          baseTerX[i] = -x;       // terrain: right-to-left within verse
-          baseTerY[i] = -line;    // verses stack downward
-          const g=GEM[ch]||0;
-          gemStd[i]=g; gemSof[i]=SOFIT[ch]||g;
-          pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen; pCode[i]=code;
-          x+=LETTER_GAP; col++; i++;
-        }
-        x+=WORD_GAP;
-      }
-      line++;
-    }
-  }
-  centre(baseTerX,baseTerY);
-  // scroll: continuous stream, no verse breaks, wrapped into right-to-left columns
-  const perCol=SCROLL_W*SCROLL_H;
-  for(let k=0;k<N;k++){
-    const K=Math.floor(k/perCol), rem=k%perCol;
-    const l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
-    baseScrX[k] = -cc - K*(SCROLL_W+SCROLL_COLGAP);
-    baseScrY[k] = -l;
-  }
-  centre(baseScrX,baseScrY);
-  // sphere: fibonacci distribution by reading order
-  const GA=Math.PI*(3-Math.sqrt(5));
-  for(let k=0;k<N;k++){
-    const y=1-2*((k+0.5)/N), r=Math.sqrt(Math.max(0,1-y*y)), ph=GA*k;
-    dirX[k]=Math.cos(ph)*r; dirY[k]=y; dirZ[k]=Math.sin(ph)*r;
-  }
-})();
-
-/* ---- verse index: maps text spans <-> point indices (same order as build) - */
+const gemStd=new Int16Array(N), gemSof=new Int16Array(N);
+const pChap=new Int16Array(N), pVerse=new Int16Array(N), pCol=new Int16Array(N), pLineLen=new Int16Array(N);
+const pCode=new Int32Array(N), pBook=new Uint8Array(N), pGChap=new Int16Array(N);
+const xInLine=new Float32Array(N);        // world x within verse line (with word gaps)
+const bookLine=new Int32Array(N);         // 0-based line within its book
+const bookLetter=new Int32Array(N);       // 0-based letter within its book
+const BK=[];                              // per-book meta {lines,letters,maxLine}
 const VERSES=[];
-(function(){
-  let gi=0;
-  for(let c=0;c<DATA.length;c++) for(let v=0;v<DATA[c].length;v++){
-    const verse=DATA[c][v], start=gi, words=[];
-    for(const w of verse){ words.push({gi:gi,n:w.length,he:w}); gi+=w.length; }
-    VERSES.push({c:c+1,v:v+1,gi:start,n:gi-start,words:words,en:(EN[c]&&EN[c][v])||''});
+(function build(){
+  let i=0, gch=0;
+  for(let b=0;b<BOOKS.length;b++){
+    const meta={lines:0,letters:0,maxLine:0}; let bl=0, blet=0;
+    const chs=BOOKS[b].chapters;
+    for(let c=0;c<chs.length;c++){
+      for(let vv=0;vv<chs[c].length;vv++){
+        const verse=chs[c][vv];
+        const lineLen=verse.reduce((s,w)=>s+w.length,0);
+        let x=0, col=0; const vstart=i;
+        for(let wi=0;wi<verse.length;wi++){
+          const word=verse[wi];
+          for(let li=0;li<word.length;li++){
+            const chr=word[li], code=chr.charCodeAt(0);
+            const g=GEM[chr]||0; gemStd[i]=g; gemSof[i]=SOFIT[chr]||g;
+            pBook[i]=b; pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen;
+            pCode[i]=code; pGChap[i]=gch; xInLine[i]=x; bookLine[i]=bl; bookLetter[i]=blet;
+            x+=LETTER_GAP; col++; i++; blet++;
+          }
+          x+=WORD_GAP;
+        }
+        if(x>meta.maxLine)meta.maxLine=x;
+        VERSES.push({b:b,c:c+1,v:vv+1,gi:vstart,n:i-vstart,he:verse.join(' '),
+          en:(EN[b]&&EN[b][c]&&EN[b][c][vv])||''});
+        bl++;
+      }
+      gch++;
+    }
+    meta.lines=bl; meta.letters=blet; BK.push(meta);
   }
 })();
 const textMask=new Uint8Array(N);   // 1 = letter is in current text selection
@@ -430,14 +422,13 @@ let basePlane, baseEdges;
   baseEdges.position.copy(basePlane.position); scene.add(baseEdges);
 })();
 function fitPlane(m){
-  if(m==='sphere'){ basePlane.visible=false; baseEdges.visible=false; return; }
+  if(m==='sphere'||m==='meaning'||m==='map'){ basePlane.visible=false; baseEdges.visible=false; return; }
   basePlane.visible=true; baseEdges.visible=true;
-  const ax=m==='scroll'?baseScrX:baseTerX, ay=m==='scroll'?baseScrY:baseTerY;
-  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
-  for(let k=0;k<N;k++){const X=ax[k],Y=ay[k];
-    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
-  const pad=14, w=(maxx-minx)+pad*2, h=(maxy-miny)+pad*2;
-  basePlane.geometry.dispose(); basePlane.geometry=new THREE.PlaneGeometry(w,h);
+  geom.computeBoundingBox(); const bb=geom.boundingBox;
+  const pad=16, w=(bb.max.x-bb.min.x)+pad*2, h=(bb.max.y-bb.min.y)+pad*2;
+  const cx=(bb.max.x+bb.min.x)/2, cy=(bb.max.y+bb.min.y)/2;
+  basePlane.position.set(cx,cy,-0.5); baseEdges.position.set(cx,cy,-0.5);
+  basePlane.geometry.dispose(); basePlane.geometry=new THREE.PlaneGeometry(Math.max(1,w),Math.max(1,h));
   baseEdges.geometry.dispose(); baseEdges.geometry=new THREE.EdgesGeometry(basePlane.geometry);
 }
 
@@ -490,10 +481,10 @@ const points=new THREE.Points(geom,material); scene.add(points);
 scene.add(new THREE.AmbientLight(0x2a3550,0.8));
 const sun=new THREE.DirectionalLight(0xfff1d6,1.25); sun.position.set(-0.6,1.0,0.55); scene.add(sun);
 const enrich=(function(){
-  const NC=50,NL=22;
+  const NC=187,NL=22;
   const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(NL));
   const rt=new Float64Array(NC),ct=new Float64Array(NL); let tot=0;
-  for(let k=0;k<N;k++){const c=pChap[k]-1; if(c<0||c>=NC)continue; cnt[c][pBaseIdx[k]]++;}
+  for(let k=0;k<N;k++){const c=pGChap[k]; if(c<0||c>=NC)continue; cnt[c][pBaseIdx[k]]++;}
   for(let c=0;c<NC;c++)for(let l=0;l<NL;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];}
   const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(NL));
     for(let l=0;l<NL;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
@@ -554,7 +545,8 @@ function updateLabels(){
 
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:2.2,
-  chapters:new Set(), only:false, textActive:false, mode:'terrain', layers:false};
+  chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
+  books:new Set([0,1,2,3,4]), layout:'string'};
 
 function curveFn(v){
   switch(state.curve){
@@ -567,27 +559,44 @@ function curveFn(v){
 
 /* recompute heights + colours (band / curve / exaggerate / sofit) */
 const LAYER_BANDS=11;
+function selectedBooks(){ const a=[]; for(let b=0;b<BOOKS.length;b++) if(state.books.has(b)) a.push(b); return a; }
 function recompute(){
   const lo=state.floor, hi=Math.max(lo+1,state.ceil), span=hi-lo;
   const posA=geom.attributes.position, colA=geom.attributes.aColor;
-  const m=state.mode, lay=state.layers;
+  const m=state.mode, lay=state.layers, str=(state.layout==='string');
+  const sb=selectedBooks();
+  const lineBase={}, letBase={}, slot={}, scrXoff={};
+  let accL=0, accLet=0, maxLineW=0, accCols=0; const perCol=SCROLL_W*SCROLL_H;
+  for(const b of sb){ if(BK[b].maxLine>maxLineW) maxLineW=BK[b].maxLine; }
+  sb.forEach((b,si)=>{ slot[b]=si; lineBase[b]=accL; accL+=BK[b].lines; letBase[b]=accLet; accLet+=BK[b].letters;
+    scrXoff[b]=accCols; accCols += (Math.ceil(BK[b].letters/perCol)+1)*(SCROLL_W+SCROLL_COLGAP); });
+  const totalLet=accLet||1, terGap=maxLineW+20, GA=Math.PI*(3-Math.sqrt(5));
   for(let k=0;k<N;k++){
+    const b=pBook[k];
+    if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
     const g=state.sofit?gemSof[k]:gemStd[k];
     let nv=(g-lo)/span; if(nv<0)nv=0; else if(nv>1)nv=1;
-    let cv=curveFn(nv);
-    // tectonic layers: quantise height + colour into discrete strata
+    const cv=curveFn(nv);
     const hv = lay ? Math.round(cv*(LAYER_BANDS-1))/(LAYER_BANDS-1) : cv;
     const h = hv*HEIGHT_MAX*state.exag;
+    let X,Y,Z;
     if(m==='sphere'){
-      const rr=SPHERE_R + h*1.7;
-      posA.array[k*3]=dirX[k]*rr; posA.array[k*3+1]=dirY[k]*rr; posA.array[k*3+2]=dirZ[k]*rr;
-    }else{
-      const bx = m==='scroll'?baseScrX[k]:baseTerX[k];
-      const by = m==='scroll'?baseScrY[k]:baseTerY[k];
-      posA.array[k*3]=bx; posA.array[k*3+1]=by; posA.array[k*3+2]=h;
+      const s=letBase[b]+bookLetter[k];
+      const yy=1-2*((s+0.5)/totalLet), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
+      X=Math.cos(ph)*rr*R; Y=yy*R; Z=Math.sin(ph)*rr*R;
+    } else if(m==='scroll'){
+      const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
+      const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
+      const xoff = str ? 0 : scrXoff[b];
+      X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
+    } else {
+      if(str){ X=-xInLine[k]; Y=-(lineBase[b]+bookLine[k]); }
+      else { X=-xInLine[k]-slot[b]*terGap; Y=-bookLine[k]; }
+      Z=h;
     }
-    const rgb=ramp(hv);
-    colA.array[k*3]=rgb[0];colA.array[k*3+1]=rgb[1];colA.array[k*3+2]=rgb[2];
+    posA.array[k*3]=X; posA.array[k*3+1]=Y; posA.array[k*3+2]=Z;
+    const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
+    colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
   geom.computeBoundingSphere(); geom.computeBoundingBox();
@@ -600,6 +609,7 @@ function applySelection(){
   const sA=geom.attributes.aSel, any=state.chapters.size>0, txt=state.textActive, lAny=letterCount>0;
   let count=0, sum=0, vSet=new Set(), cSet=new Set();
   for(let k=0;k<N;k++){
+    if(!state.books.has(pBook[k])){ sA.array[k]=-1; continue; }
     const chosen = txt ? (textMask[k]===1)
       : ((!any || state.chapters.has(pChap[k])) && (!lAny || letterOn[pBaseIdx[k]]===1));
     let s;
@@ -608,7 +618,7 @@ function applySelection(){
     sA.array[k]=s;
     if(s===1){
       count++; sum+=(state.sofit?gemSof[k]:gemStd[k]);
-      cSet.add(pChap[k]); vSet.add(pChap[k]*1000+pVerse[k]);
+      cSet.add(pGChap[k]); vSet.add(pGChap[k]*1000+pVerse[k]);
     }
   }
   sA.needsUpdate=true;
@@ -720,7 +730,36 @@ $('l-clear').addEventListener('click',()=>{
   document.querySelectorAll('.lchip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
 });
 
-/* layout mode (terrain / scroll / sphere) */
+/* books: include/exclude + arrange (stack / string) */
+function refreshBooks(){
+  clearText(); buildReader();
+  if(state.mode==='meaning'||state.mode==='map'){ applySelection(); }
+  else { recompute(); fitPlane(state.mode); fitView(state.mode); }
+}
+(function bchips(){
+  const wrap=$('bchips');
+  BOOKS.forEach((bk,i)=>{
+    const b=document.createElement('button'); b.className='bchip on'; b.dataset.b=i; b.textContent=bk.name.slice(0,3);
+    b.title=bk.name;
+    b.addEventListener('click',()=>{
+      if(state.books.has(i)){state.books.delete(i);b.classList.remove('on');}
+      else{state.books.add(i);b.classList.add('on');}
+      refreshBooks();
+    });
+    wrap.appendChild(b);
+  });
+})();
+$('bk-all').addEventListener('click',()=>{ for(let i=0;i<BOOKS.length;i++)state.books.add(i);
+  document.querySelectorAll('.bchip').forEach(x=>x.classList.add('on')); refreshBooks(); });
+$('bk-clear').addEventListener('click',()=>{ state.books.clear();
+  document.querySelectorAll('.bchip').forEach(x=>x.classList.remove('on')); refreshBooks(); });
+document.querySelectorAll('#seg-layout button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-layout button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state.layout=b.dataset.l;
+  if(state.mode!=='meaning'&&state.mode!=='map'){ recompute(); fitPlane(state.mode); fitView(state.mode); }
+}));
+
+/* layout mode (terrain / scroll / sphere / meaning / map) */
 document.querySelectorAll('#seg-mode button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); setMode(b.dataset.m);
@@ -733,23 +772,26 @@ document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('c
 }));
 
 /* ---- reading panel: highlight text -> reflect only those letters ---------- */
+const BOOK_SHORT=BOOKS.map(b=>b.name.slice(0,3));
 function escHtml(s){return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
-(function buildReader(){
-  let html='';
+function buildReader(){
+  let html='', lastBook=-1;
   for(let i=0;i<VERSES.length;i++){
-    const V=VERSES[i]; let he='';
-    for(const w of V.words) he+='<span class="w" data-gi="'+w.gi+'" data-n="'+w.n+'">'+w.he+'</span> ';
-    html+='<div class="rv" data-i="'+i+'"><div class="ref">'+V.c+':'+V.v+'</div>'
-        +'<div class="he" dir="rtl">'+he+'</div>'
+    const V=VERSES[i]; if(!state.books.has(V.b)) continue;
+    if(V.b!==lastBook){ html+='<div class="rbook">'+BOOKS[V.b].he+' · '+BOOKS[V.b].name+'</div>'; lastBook=V.b; }
+    html+='<div class="rv" data-gi="'+V.gi+'" data-n="'+V.n+'">'
+        +'<div class="ref">'+BOOK_SHORT[V.b]+' '+V.c+':'+V.v+'</div>'
+        +'<div class="he" dir="rtl">'+escHtml(V.he)+'</div>'
         +'<div class="en">'+escHtml(V.en)+'</div></div>';
   }
   $('reader-body').innerHTML=html;
-})();
+}
+buildReader();
 
 function clearText(){
   state.textActive=false; textMask.fill(0);
   const body=$('reader-body');
-  if(body) body.querySelectorAll('.w.hot,.en.hot').forEach(e=>e.classList.remove('hot'));
+  if(body) body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
   const rc=$('reader-count'); if(rc) rc.textContent='all shown';
 }
 
@@ -764,24 +806,14 @@ function mapSelection(){
   if(!reader.contains(r.commonAncestorContainer)
      && !reader.contains(r.startContainer) && !reader.contains(r.endContainer)) return;
   const body=$('reader-body');
-  body.querySelectorAll('.w.hot,.en.hot').forEach(e=>e.classList.remove('hot'));
+  body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
   textMask.fill(0); let any=false;
   const rvs=body.querySelectorAll('.rv');
   for(const rv of rvs){
     if(!r.intersectsNode(rv)) continue;
-    const V=VERSES[+rv.dataset.i];
-    rv.querySelectorAll('.w').forEach(w=>{
-      if(r.intersectsNode(w)){
-        const gi=+w.dataset.gi, n=+w.dataset.n;
-        for(let k=gi;k<gi+n;k++) textMask[k]=1;
-        w.classList.add('hot'); any=true;
-      }
-    });
-    const enEl=rv.querySelector('.en');
-    if(enEl && r.intersectsNode(enEl)){
-      for(let k=V.gi;k<V.gi+V.n;k++) textMask[k]=1;
-      enEl.classList.add('hot'); any=true;
-    }
+    const gi=+rv.dataset.gi, n=+rv.dataset.n;
+    for(let k=gi;k<gi+n;k++) textMask[k]=1;
+    rv.classList.add('hot'); any=true;
   }
   if(any){
     state.textActive=true; applySelection();
@@ -830,7 +862,7 @@ function setMode(m){
     else { sph.phi=0.92; sph.theta=0.62; userMoved=false; }
     applyCam();
   } else {
-    fitPlane(m); recompute(); fitView(m);
+    recompute(); fitPlane(m); fitView(m);
   }
 }
 let userMoved=false;
@@ -887,7 +919,7 @@ function doHover(){
   for(const h of hits){ if(sel[h.index]>-0.5){pick=h.index;break;} }
   if(pick<0){ tip.classList.remove('on'); return; }
   $('tip-g').textContent=String.fromCharCode(pCode[pick]);
-  $('tip-ref').textContent='Genesis '+pChap[pick]+':'+pVerse[pick];
+  $('tip-ref').textContent=BOOKS[pBook[pick]].name+' '+pChap[pick]+':'+pVerse[pick];
   $('tip-val').textContent=(state.sofit?gemSof[pick]:gemStd[pick]);
   $('tip-pos').textContent=pCol[pick]+' / '+pLineLen[pick];
   tip.classList.add('on');
@@ -913,7 +945,7 @@ function animate(){
 }
 
 /* ---- boot ----------------------------------------------------------------- */
-fitPlane(state.mode); recompute(); fitView(state.mode); animate();
+recompute(); fitPlane(state.mode); fitView(state.mode); animate();
 setTimeout(()=>{ $('loader').classList.add('hide'); $('title').classList.add('in'); },650);
 })();
 </script>
