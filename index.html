@@ -628,12 +628,14 @@ function recompute(){
   const posA=geom.attributes.position, colA=geom.attributes.aColor;
   const m=state.mode, lay=state.layers, str=(state.layout==='string');
   const sb=selectedBooks();
-  const lineBase={}, letBase={}, slot={}, scrXoff={};
-  let accL=0, accLet=0, maxLineW=0, accCols=0; const perCol=SCROLL_W*SCROLL_H;
-  for(const b of sb){ if(BK[b].maxLine>maxLineW) maxLineW=BK[b].maxLine; }
-  sb.forEach((b,si)=>{ slot[b]=si; lineBase[b]=accL; accL+=BK[b].lines; letBase[b]=accLet; accLet+=BK[b].letters;
-    scrXoff[b]=accCols; accCols += (Math.ceil(BK[b].letters/perCol)+1)*(SCROLL_W+SCROLL_COLGAP); });
-  const totalLet=accLet||1, terGap=maxLineW+20, GA=Math.PI*(3-Math.sqrt(5));
+  const lineBase={}, letBase={}; const perCol=SCROLL_W*SCROLL_H;
+  let accL=0, accLet=0;
+  sb.forEach(b=>{ lineBase[b]=accL; accL+=BK[b].lines; letBase[b]=accLet; accLet+=BK[b].letters; });
+  /* STACK uses FIXED absolute slots over ALL books, so a deselected book leaves an empty gap */
+  let maxLineAll=0; for(let bb=0;bb<BOOKS.length;bb++) if(BK[bb].maxLine>maxLineAll) maxLineAll=BK[bb].maxLine;
+  const terGapFixed=maxLineAll+24; const fixedScrX={}; let accAll=0;
+  for(let bb=0;bb<BOOKS.length;bb++){ fixedScrX[bb]=accAll; accAll+=(Math.ceil(BK[bb].letters/perCol)+1)*(SCROLL_W+SCROLL_COLGAP); }
+  const totalLet=accLet||1, GA=Math.PI*(3-Math.sqrt(5));
   for(let k=0;k<N;k++){
     const b=pBook[k];
     if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
@@ -652,11 +654,11 @@ function recompute(){
     } else if(m==='scroll'){
       const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
       const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
-      const xoff = str ? 0 : scrXoff[b];
+      const xoff = str ? 0 : fixedScrX[b];
       X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
     } else {
       if(str){ X=-xInLine[k]; Y=-(lineBase[b]+bookLine[k]); }
-      else { X=-xInLine[k]-slot[b]*terGap; Y=-bookLine[k]; }
+      else { X=-xInLine[k]-b*terGapFixed; Y=-bookLine[k]; }
       Z=h;
     }
     posA.array[k*3]=X; posA.array[k*3+1]=Y; posA.array[k*3+2]=Z;
