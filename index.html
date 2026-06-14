@@ -136,6 +136,16 @@
   .rv .en.hot{color:var(--ink)}
   #reader-body ::selection{background:rgba(227,178,60,.42);color:#fff}
   #reader-body ::-moz-selection{background:rgba(227,178,60,.42);color:#fff}
+  /* ---- hebrew letter chips ---- */
+  .lchips{display:flex;flex-wrap:wrap;gap:5px;padding:2px}
+  .lchip{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    width:40px;padding:5px 0 4px;border-radius:8px;cursor:pointer;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);transition:.15s}
+  .lchip:hover{border-color:var(--panelbrd)}
+  .lchip .lg{font-family:var(--serif);font-size:19px;line-height:1;color:var(--ink)}
+  .lchip .lv{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px}
+  .lchip.on{background:var(--gold);border-color:var(--gold)}
+  .lchip.on .lg,.lchip.on .lv{color:var(--void)}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   @media (max-width:680px){
     #ctrl{width:calc(100vw - 24px);right:12px;top:auto;bottom:12px;max-height:46vh}
@@ -212,6 +222,15 @@
     </div>
     <label class="toggle" style="margin-top:10px">
       <input type="checkbox" id="c-only"><span class="tk"></span>Show selection only (isolate)</label>
+  </div>
+
+  <div class="grp">
+    <span class="lbl">Hebrew letters · toggle by glyph</span>
+    <div class="lchips" id="lchips"></div>
+    <div class="acts">
+      <button class="act" id="l-all">Select all</button>
+      <button class="act" id="l-clear">Clear</button>
+    </div>
   </div>
 
   <div class="grp">
@@ -336,6 +355,16 @@ const VERSES=[];
 })();
 const textMask=new Uint8Array(N);   // 1 = letter is in current text selection
 
+/* ---- aleph-bet index + per-letter filter (base + final toggle together) -- */
+const ALEPHBET=[['א',1],['ב',2],['ג',3],['ד',4],['ה',5],['ו',6],['ז',7],['ח',8],['ט',9],['י',10],
+  ['כ',20],['ל',30],['מ',40],['נ',50],['ס',60],['ע',70],['פ',80],['צ',90],['ק',100],['ר',200],['ש',300],['ת',400]];
+const FINAL2BASE={'ך':'כ','ם':'מ','ן':'נ','ף':'פ','ץ':'צ'};
+const BASEIDX={}; ALEPHBET.forEach((p,i)=>BASEIDX[p[0]]=i);
+Object.keys(FINAL2BASE).forEach(f=>BASEIDX[f]=BASEIDX[FINAL2BASE[f]]);
+const pBaseIdx=new Uint8Array(N);
+for(let k=0;k<N;k++) pBaseIdx[k]=BASEIDX[String.fromCharCode(pCode[k])]||0;
+const letterOn=new Uint8Array(22); let letterCount=0;
+
 /* ---- three.js scene ------------------------------------------------------- */
 const BG=0x06070d;
 const scene=new THREE.Scene();
@@ -437,10 +466,11 @@ function recompute(){
 
 /* selection / isolation + live stats */
 function applySelection(){
-  const sA=geom.attributes.aSel, any=state.chapters.size>0, txt=state.textActive;
+  const sA=geom.attributes.aSel, any=state.chapters.size>0, txt=state.textActive, lAny=letterCount>0;
   let count=0, sum=0, vSet=new Set(), cSet=new Set();
   for(let k=0;k<N;k++){
-    const chosen = txt ? (textMask[k]===1) : (!any || state.chapters.has(pChap[k]));
+    const chosen = txt ? (textMask[k]===1)
+      : ((!any || state.chapters.has(pChap[k])) && (!lAny || letterOn[pBaseIdx[k]]===1));
     let s;
     if(chosen) s=1;
     else s = state.only ? -1 : 0;
@@ -532,6 +562,30 @@ $('b-all').addEventListener('click',()=>{
 $('b-clear').addEventListener('click',()=>{
   state.chapters.clear();
   document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
+});
+
+/* hebrew-letter toggles — same isolate/highlight behaviour as chapters */
+(function lchips(){
+  const wrap=$('lchips');
+  ALEPHBET.forEach((p,i)=>{
+    const b=document.createElement('button'); b.className='lchip'; b.dataset.i=i;
+    b.title='letter '+p[0]+' · gematria '+p[1];
+    b.innerHTML='<span class="lg">'+p[0]+'</span><span class="lv">'+p[1]+'</span>';
+    b.addEventListener('click',()=>{
+      if(letterOn[i]){letterOn[i]=0;letterCount--;b.classList.remove('on');}
+      else{letterOn[i]=1;letterCount++;b.classList.add('on');}
+      clearText(); applySelection();
+    });
+    wrap.appendChild(b);
+  });
+})();
+$('l-all').addEventListener('click',()=>{
+  for(let i=0;i<22;i++)letterOn[i]=1; letterCount=22;
+  document.querySelectorAll('.lchip').forEach(x=>x.classList.add('on')); clearText(); applySelection();
+});
+$('l-clear').addEventListener('click',()=>{
+  letterOn.fill(0); letterCount=0;
+  document.querySelectorAll('.lchip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
 });
 
 /* ---- reading panel: highlight text -> reflect only those letters ---------- */
