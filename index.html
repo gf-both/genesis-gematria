@@ -373,6 +373,8 @@ const xInLine=new Float32Array(N);        // world x within verse line (with wor
 const bookLine=new Int32Array(N);         // 0-based line within its book
 const bookLetter=new Int32Array(N);       // 0-based letter within its book
 const pWsum=new Int32Array(N), pWsumSof=new Int32Array(N);  // word total gematria (shared by word's letters)
+const pWid=new Int32Array(N);             // global word index per letter
+const WORDS=[];                           // {he, sum, sumSof, gch} per word
 const BK=[];                              // per-book meta {lines,letters,maxLine}
 const VERSES=[];
 (function build(){
@@ -388,10 +390,11 @@ const VERSES=[];
         for(let wi=0;wi<verse.length;wi++){
           const word=verse[wi];
           let ws=0,wss=0; for(const ch of word){ const gg=GEM[ch]||0; ws+=gg; wss+=SOFIT[ch]||gg; }
+          const wid=WORDS.length; WORDS.push({he:word, sum:ws, sumSof:wss, gch:gch});
           for(let li=0;li<word.length;li++){
             const chr=word[li], code=chr.charCodeAt(0);
             const g=GEM[chr]||0; gemStd[i]=g; gemSof[i]=SOFIT[chr]||g;
-            pWsum[i]=ws; pWsumSof[i]=wss;
+            pWsum[i]=ws; pWsumSof[i]=wss; pWid[i]=wid;
             pBook[i]=b; pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen;
             pCode[i]=code; pGChap[i]=gch; xInLine[i]=x; bookLine[i]=bl; bookLetter[i]=blet;
             x+=LETTER_GAP; col++; i++; blet++;
@@ -535,36 +538,53 @@ const enrGroup=new THREE.Group();
 enrGroup.add(new THREE.Mesh(enrGeom,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.92,metalness:0.0,side:THREE.DoubleSide})));
 enrGroup.visible=false; scene.add(enrGroup);
 let eRawH=null, eLet=null, ENR_NC=1, ENR_FX=1, ENR_FY=1;
+const WBANDS=24; let curBins=ENR_NL;     // letter mode = 22 letters · word mode = gematria bands
+function wband(v){ if(v<=0)return 0; const mx=state.sofit?MAXWsof:MAXW; const t=Math.log1p(v)/Math.log1p(mx||1);
+  return Math.max(0,Math.min(WBANDS-1,Math.floor(t*WBANDS))); }
 function enrComputeGrid(){            // enrichment z over chapters of the SELECTED books
-  const g2r=new Int16Array(187).fill(-1); let r=0, gch=0;
+  /* STRING (default) = selected chapters only, reflowed · STACK = all books in fixed
+     slots; deselected books leave empty rows that sink to the valley floor (black hole). */
+  const stack=(state.layout!=='string');
+  const g2r=new Int16Array(187).fill(-1); const rowBook=[]; let r=0, gch=0;
   for(let b=0;b<BOOKS.length;b++){ const nch=BOOKS[b].chapters.length;
-    for(let c=0;c<nch;c++){ if(state.books.has(b)) g2r[gch]=r++; gch++; } }
+    for(let c=0;c<nch;c++){
+      if(state.books.has(b)){ g2r[gch]=r; rowBook[r]=b; r++; }
+      else if(stack){ g2r[gch]=-1; rowBook[r]=-1; r++; }   // reserve an empty gap row
+      gch++;
+    } }
   const NC=r||1;
-  const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(ENR_NL));
-  for(let k=0;k<N;k++){ const rr=g2r[pGChap[k]]; if(rr<0)continue; cnt[rr][pBaseIdx[k]]++; }
-  const rt=new Float64Array(NC), ct=new Float64Array(ENR_NL); let tot=0;
-  for(let c=0;c<NC;c++)for(let l=0;l<ENR_NL;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];} tot=tot||1;
-  const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(ENR_NL));
-    for(let l=0;l<ENR_NL;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
+  const word=(state.gran==='word'); const NB=word?WBANDS:ENR_NL; curBins=NB;
+  const emptyRow=new Uint8Array(NC); for(let c=0;c<NC;c++) emptyRow[c]=(rowBook[c]===-1)?1:0;
+  const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(NB));
+  if(word){ for(let wi=0;wi<WORDS.length;wi++){ const W=WORDS[wi]; const rr=g2r[W.gch]; if(rr<0)continue;
+      cnt[rr][wband(state.sofit?W.sumSof:W.sum)]++; } }
+  else { for(let k=0;k<N;k++){ const rr=g2r[pGChap[k]]; if(rr<0)continue; cnt[rr][pBaseIdx[k]]++; } }
+  const rt=new Float64Array(NC), ct=new Float64Array(NB); let tot=0;
+  for(let c=0;c<NC;c++)for(let l=0;l<NB;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];} tot=tot||1;
+  const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(NB));
+    for(let l=0;l<NB;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
       Z[c][l]=Math.max(-3.5,Math.min(10,(cnt[c][l]-e)/sd));}}
-  const B=[]; for(let c=0;c<NC;c++){B.push(new Float64Array(ENR_NL));
-    for(let l=0;l<ENR_NL;l++){let s=0,w=0; for(let dc=-1;dc<=1;dc++)for(let dl=-1;dl<=1;dl++){const cc=c+dc,ll=l+dl;
-      if(cc>=0&&cc<NC&&ll>=0&&ll<ENR_NL){const wt=(dc||dl)?1:2;s+=Z[cc][ll]*wt;w+=wt;}} B[c][l]=s/w;}}
-  let mn=1e9,mx=-1e9; for(let c=0;c<NC;c++)for(let l=0;l<ENR_NL;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];}
+  const B=[]; for(let c=0;c<NC;c++){B.push(new Float64Array(NB));
+    for(let l=0;l<NB;l++){let s=0,w=0; for(let dc=-1;dc<=1;dc++)for(let dl=-1;dl<=1;dl++){const cc=c+dc,ll=l+dl;
+      if(cc>=0&&cc<NC&&ll>=0&&ll<NB){const wt=(dc||dl)?1:2;s+=Z[cc][ll]*wt;w+=wt;}} B[c][l]=s/w;}}
+  let mn=1e9,mx=-1e9;
+  for(let c=0;c<NC;c++){ if(emptyRow[c])continue; for(let l=0;l<NB;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];} }
+  if(mn>mx){mn=0;mx=1;}
+  for(let c=0;c<NC;c++) if(emptyRow[c]) for(let l=0;l<NB;l++) B[c][l]=mn;   // gap rows = valley floor
   return {NC,Z:B,mn,mx};
 }
 function enrSampleGrid(G,fi,fj,NC){
-  const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,NC-1),l1=Math.min(l0+1,ENR_NL-1),tc=fi-c0,tl=fj-l0;
+  const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,NC-1),l1=Math.min(l0+1,curBins-1),tc=fi-c0,tl=fj-l0;
   return (G[c0][l0]*(1-tl)+G[c0][l1]*tl)*(1-tc)+(G[c1][l0]*(1-tl)+G[c1][l1]*tl)*tc;
 }
 function rebuildEnrich(){             // rebuild surface geometry for current book selection
   const grid=enrComputeGrid(); ENR_NC=grid.NC;
-  ENR_FX=(ENR_NL-1)*SUB+1; ENR_FY=Math.max(2,(grid.NC-1)*SUB+1); const VC=ENR_FX*ENR_FY;
+  ENR_FX=(curBins-1)*SUB+1; ENR_FY=Math.max(2,(grid.NC-1)*SUB+1); const VC=ENR_FX*ENR_FY;
   const pos=new Float32Array(VC*3), col=new Float32Array(VC*3);
   eRawH=new Float32Array(VC); eLet=new Uint8Array(VC);
   const rng=(grid.mx-grid.mn)||1; let vp=0;
   for(let i=0;i<ENR_FY;i++)for(let j=0;j<ENR_FX;j++){
-    const fj=j/(ENR_FX-1)*(ENR_NL-1);
+    const fj=j/(ENR_FX-1)*(curBins-1);
     const z=enrSampleGrid(grid.Z, i/(ENR_FY-1)*(grid.NC-1), fj, grid.NC);
     eRawH[vp]=(z-grid.mn)/rng; eLet[vp]=Math.round(fj);
     pos[vp*3]=(j/(ENR_FX-1)-0.5)*ENR_W; pos[vp*3+1]=-(i/(ENR_FY-1))*ENR_D+ENR_D/2; pos[vp*3+2]=0; vp++;
@@ -575,11 +595,14 @@ function rebuildEnrich(){             // rebuild surface geometry for current bo
   enrGeom.setIndex(idx);
   applyEnrich();
 }
-function applyEnrich(){               // re-shape from curve + exaggerate + letter filter (live controls)
+function applyEnrich(){               // re-shape from curve + exaggerate + layers + letter filter (live)
   if(!eRawH) return;
-  const pa=enrGeom.attributes.position, ca=enrGeom.attributes.color, lAny=letterCount>0;
+  const pa=enrGeom.attributes.position, ca=enrGeom.attributes.color;
+  const lAny=letterCount>0 && state.gran!=='word';   // letter filter only meaningful in letter mode
   for(let v=0;v<eRawH.length;v++){
-    const on=!lAny||letterOn[eLet[v]], h=curveFn(eRawH[v]);
+    const on=!lAny||letterOn[eLet[v]];
+    let h=curveFn(eRawH[v]);
+    if(state.layers) h=Math.round(h*(LAYER_BANDS-1))/(LAYER_BANDS-1);
     pa.array[v*3+2]= on ? h*ENR_H*state.exag : 0;
     const rgb=ramp(on?h:0), d=on?1:0.4;
     ca.array[v*3]=rgb[0]*d; ca.array[v*3+1]=rgb[1]*d; ca.array[v*3+2]=rgb[2]*d;
@@ -591,7 +614,7 @@ const vlab=document.getElementById('vlabels');
 const labelObjs=PEAKS.map(([t,li,ci])=>{const el=document.createElement('div');el.className='vlabel';el.textContent=t;vlab.appendChild(el);return {el,li,ci};});
 const _lv=new THREE.Vector3();
 function updateLabels(){              // Genesis peak labels (only when Genesis is in the selection)
-  const show=(state.mode==='meaning'||state.mode==='map')&&state.books.has(0)&&eRawH;
+  const show=(state.mode==='meaning'||state.mode==='map')&&state.books.has(0)&&eRawH&&state.gran!=='word'&&state.layout==='string';
   if(!show){ for(const L of labelObjs)L.el.style.display='none'; return; }
   for(const L of labelObjs){
     const i=Math.round((L.ci-1)/Math.max(1,ENR_NC-1)*(ENR_FY-1)), j=Math.round(L.li/(ENR_NL-1)*(ENR_FX-1));
@@ -749,7 +772,7 @@ document.querySelectorAll('#seg-band button').forEach(b=>b.addEventListener('cli
 $('c-sofit').addEventListener('change',e=>{
   state.sofit=e.target.checked;
   $('s-ceil').max= state.sofit?900:400; $('s-floor').max= state.sofit?900:400;
-  recompute();
+  if(state.mode==='meaning'||state.mode==='map') rebuildEnrich(); else recompute();
 });
 $('c-only').addEventListener('change',e=>{state.only=e.target.checked;applySelection();});
 
@@ -826,6 +849,7 @@ document.querySelectorAll('#seg-layout button').forEach(b=>b.addEventListener('c
   document.querySelectorAll('#seg-layout button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); state.layout=b.dataset.l;
   if(state.mode!=='meaning'&&state.mode!=='map'){ recompute(); fitPlane(state.mode); fitView(state.mode); }
+  else { rebuildEnrich(); }
 }));
 
 /* layout mode (terrain / scroll / sphere / meaning / map) */
@@ -879,13 +903,13 @@ document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('c
   b.classList.add('on'); const r=b.dataset.r;
   state.layers=(r==='layers'); state.glyph=(r==='glyph');
   material.uniforms.uLayers.value=state.layers?1:0; material.uniforms.uGlyph.value=state.glyph?1:0;
-  recompute();
+  if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();
 }));
 /* value source: per-letter vs per-word gematria (rebuilds the terrain heights) */
 document.querySelectorAll('#seg-gran button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-gran button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); state.gran=b.dataset.g;
-  if(state.mode!=='meaning'&&state.mode!=='map') recompute();
+  if(state.mode==='meaning'||state.mode==='map') rebuildEnrich(); else recompute();
   drawLegend();
 }));
 
@@ -1066,9 +1090,17 @@ function doHover(){
   let pick=-1;
   for(const h of hits){ if(sel[h.index]>-0.5){pick=h.index;break;} }
   if(pick<0){ tip.classList.remove('on'); return; }
-  $('tip-g').textContent=String.fromCharCode(pCode[pick]);
+  const _g=$('tip-g');
+  if(state.gran==='word'){
+    const w=WORDS[pWid[pick]];
+    _g.textContent=w.he; _g.style.direction='rtl';
+    _g.style.fontSize=(w.he.length>5?'24px':w.he.length>3?'32px':'40px');
+    $('tip-val').textContent=(state.sofit?w.sumSof:w.sum);
+  } else {
+    _g.textContent=String.fromCharCode(pCode[pick]); _g.style.direction=''; _g.style.fontSize='';
+    $('tip-val').textContent=(state.sofit?gemSof[pick]:gemStd[pick]);
+  }
   $('tip-ref').textContent=BOOKS[pBook[pick]].name+' '+pChap[pick]+':'+pVerse[pick];
-  $('tip-val').textContent=(state.sofit?gemSof[pick]:gemStd[pick]);
   $('tip-pos').textContent=pCol[pick]+' / '+pLineLen[pick];
   tip.classList.add('on');
   let tx=hx+16,ty=hy+16;
