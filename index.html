@@ -242,8 +242,8 @@
       <button data-r="dots" class="on">Dots</button>
       <button data-r="layers">Layers</button>
     </div>
-    <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">2.2</span></div>
-    <input type="range" id="s-size" min="0.5" max="6" step="0.1" value="2.2">
+    <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">3.6</span></div>
+    <input type="range" id="s-size" min="0.5" max="9" step="0.1" value="3.6">
   </div>
 
   <div class="grp">
@@ -448,7 +448,7 @@ geom.setAttribute('aColor',new THREE.BufferAttribute(colors,3));
 geom.setAttribute('aSel',new THREE.BufferAttribute(sel,1));
 
 const material=new THREE.ShaderMaterial({
-  uniforms:{uSize:{value:2.2},uScale:{value:340.0},uTex:{value:sprite()},uLayers:{value:0.0}},
+  uniforms:{uSize:{value:3.6},uScale:{value:440.0},uTex:{value:sprite()},uLayers:{value:0.0}},
   transparent:true, depthWrite:false, blending:THREE.NormalBlending,
   vertexShader:`
     attribute vec3 aColor; attribute float aSel;
@@ -471,7 +471,7 @@ const material=new THREE.ShaderMaterial({
       if(a<0.03) discard;
       vec3 c=vColor;
       if(vSel<0.5 && vSel>-0.5){ c=vec3(0.34,0.34,0.39); a*=0.28; }
-      else if(uLayers<0.5){ a=min(1.0,a*1.12); }
+      else if(uLayers<0.5){ a=min(1.0,a*1.5); }
       gl_FragColor=vec4(c,a);
     }`
 });
@@ -480,62 +480,76 @@ const points=new THREE.Points(geom,material); scene.add(points);
 /* ===== v1.1 · enrichment surface: "Meaning" (3D) + "Map" (top-down) ======== */
 scene.add(new THREE.AmbientLight(0x2a3550,0.8));
 const sun=new THREE.DirectionalLight(0xfff1d6,1.25); sun.position.set(-0.6,1.0,0.55); scene.add(sun);
-const enrich=(function(){
-  const NC=187,NL=22;
-  const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(NL));
-  const rt=new Float64Array(NC),ct=new Float64Array(NL); let tot=0;
-  for(let k=0;k<N;k++){const c=pGChap[k]; if(c<0||c>=NC)continue; cnt[c][pBaseIdx[k]]++;}
-  for(let c=0;c<NC;c++)for(let l=0;l<NL;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];}
-  const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(NL));
-    for(let l=0;l<NL;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
-      Z[c][l]=Math.max(-3.5,Math.min(10,(cnt[c][l]-e)/sd));}}
-  const B=[]; for(let c=0;c<NC;c++){B.push(new Float64Array(NL));
-    for(let l=0;l<NL;l++){let s=0,w=0;
-      for(let dc=-1;dc<=1;dc++)for(let dl=-1;dl<=1;dl++){const cc=c+dc,ll=l+dl;
-        if(cc>=0&&cc<NC&&ll>=0&&ll<NL){const wt=(dc||dl)?1:2;s+=Z[cc][ll]*wt;w+=wt;}}
-      B[c][l]=s/w;}}
-  let mn=1e9,mx=-1e9; for(let c=0;c<NC;c++)for(let l=0;l<NL;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];}
-  return {NC,NL,Z:B,mn,mx};
-})();
-const ENR_W=176,ENR_D=400,ENR_H=120,SUB=4;
-const FX=(enrich.NL-1)*SUB+1, FY=(enrich.NC-1)*SUB+1, VC=FX*FY;
-function enrSample(fi,fj){
-  const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,enrich.NC-1),l1=Math.min(l0+1,enrich.NL-1);
-  const tc=fi-c0,tl=fj-l0,G=enrich.Z;
-  return (G[c0][l0]*(1-tl)+G[c0][l1]*tl)*(1-tc)+(G[c1][l0]*(1-tl)+G[c1][l1]*tl)*tc;
-}
+const ENR_W=176, ENR_D=400, ENR_H=120, SUB=4, ENR_NL=22;
 const enrGeom=new THREE.BufferGeometry();
-const ePos=new Float32Array(VC*3),eCol=new Float32Array(VC*3),eBaseH=new Float32Array(VC);
-{let vp=0;
- for(let i=0;i<FY;i++)for(let j=0;j<FX;j++){
-   const h=(enrSample(i/(FY-1)*(enrich.NC-1), j/(FX-1)*(enrich.NL-1))-enrich.mn)/(enrich.mx-enrich.mn);
-   eBaseH[vp]=h;
-   ePos[vp*3]=(j/(FX-1)-0.5)*ENR_W; ePos[vp*3+1]=-(i/(FY-1))*ENR_D+ENR_D/2; ePos[vp*3+2]=h*ENR_H;
-   const rgb=ramp(h); eCol[vp*3]=rgb[0];eCol[vp*3+1]=rgb[1];eCol[vp*3+2]=rgb[2]; vp++;
- }}
-const eIdx=[];
-for(let i=0;i<FY-1;i++)for(let j=0;j<FX-1;j++){const a=i*FX+j,b=a+1,c=a+FX,d=c+1;eIdx.push(a,c,b,b,c,d);}
-enrGeom.setAttribute('position',new THREE.BufferAttribute(ePos,3));
-enrGeom.setAttribute('color',new THREE.BufferAttribute(eCol,3));
-enrGeom.setIndex(eIdx); enrGeom.computeVertexNormals();
 const enrGroup=new THREE.Group();
 enrGroup.add(new THREE.Mesh(enrGeom,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.92,metalness:0.0,side:THREE.DoubleSide})));
 enrGroup.visible=false; scene.add(enrGroup);
-function updateEnrichHeight(){
-  const pa=enrGeom.attributes.position;
-  for(let v=0;v<VC;v++) pa.array[v*3+2]=eBaseH[v]*ENR_H*state.exag;
-  pa.needsUpdate=true; enrGeom.computeVertexNormals();
+let eRawH=null, eLet=null, ENR_NC=1, ENR_FX=1, ENR_FY=1;
+function enrComputeGrid(){            // enrichment z over chapters of the SELECTED books
+  const g2r=new Int16Array(187).fill(-1); let r=0, gch=0;
+  for(let b=0;b<BOOKS.length;b++){ const nch=BOOKS[b].chapters.length;
+    for(let c=0;c<nch;c++){ if(state.books.has(b)) g2r[gch]=r++; gch++; } }
+  const NC=r||1;
+  const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(ENR_NL));
+  for(let k=0;k<N;k++){ const rr=g2r[pGChap[k]]; if(rr<0)continue; cnt[rr][pBaseIdx[k]]++; }
+  const rt=new Float64Array(NC), ct=new Float64Array(ENR_NL); let tot=0;
+  for(let c=0;c<NC;c++)for(let l=0;l<ENR_NL;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];} tot=tot||1;
+  const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(ENR_NL));
+    for(let l=0;l<ENR_NL;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
+      Z[c][l]=Math.max(-3.5,Math.min(10,(cnt[c][l]-e)/sd));}}
+  const B=[]; for(let c=0;c<NC;c++){B.push(new Float64Array(ENR_NL));
+    for(let l=0;l<ENR_NL;l++){let s=0,w=0; for(let dc=-1;dc<=1;dc++)for(let dl=-1;dl<=1;dl++){const cc=c+dc,ll=l+dl;
+      if(cc>=0&&cc<NC&&ll>=0&&ll<ENR_NL){const wt=(dc||dl)?1:2;s+=Z[cc][ll]*wt;w+=wt;}} B[c][l]=s/w;}}
+  let mn=1e9,mx=-1e9; for(let c=0;c<NC;c++)for(let l=0;l<ENR_NL;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];}
+  return {NC,Z:B,mn,mx};
+}
+function enrSampleGrid(G,fi,fj,NC){
+  const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,NC-1),l1=Math.min(l0+1,ENR_NL-1),tc=fi-c0,tl=fj-l0;
+  return (G[c0][l0]*(1-tl)+G[c0][l1]*tl)*(1-tc)+(G[c1][l0]*(1-tl)+G[c1][l1]*tl)*tc;
+}
+function rebuildEnrich(){             // rebuild surface geometry for current book selection
+  const grid=enrComputeGrid(); ENR_NC=grid.NC;
+  ENR_FX=(ENR_NL-1)*SUB+1; ENR_FY=Math.max(2,(grid.NC-1)*SUB+1); const VC=ENR_FX*ENR_FY;
+  const pos=new Float32Array(VC*3), col=new Float32Array(VC*3);
+  eRawH=new Float32Array(VC); eLet=new Uint8Array(VC);
+  const rng=(grid.mx-grid.mn)||1; let vp=0;
+  for(let i=0;i<ENR_FY;i++)for(let j=0;j<ENR_FX;j++){
+    const fj=j/(ENR_FX-1)*(ENR_NL-1);
+    const z=enrSampleGrid(grid.Z, i/(ENR_FY-1)*(grid.NC-1), fj, grid.NC);
+    eRawH[vp]=(z-grid.mn)/rng; eLet[vp]=Math.round(fj);
+    pos[vp*3]=(j/(ENR_FX-1)-0.5)*ENR_W; pos[vp*3+1]=-(i/(ENR_FY-1))*ENR_D+ENR_D/2; pos[vp*3+2]=0; vp++;
+  }
+  const idx=[]; for(let i=0;i<ENR_FY-1;i++)for(let j=0;j<ENR_FX-1;j++){const a=i*ENR_FX+j,b=a+1,c=a+ENR_FX,d=c+1;idx.push(a,c,b,b,c,d);}
+  enrGeom.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  enrGeom.setAttribute('color',new THREE.BufferAttribute(col,3));
+  enrGeom.setIndex(idx);
+  applyEnrich();
+}
+function applyEnrich(){               // re-shape from curve + exaggerate + letter filter (live controls)
+  if(!eRawH) return;
+  const pa=enrGeom.attributes.position, ca=enrGeom.attributes.color, lAny=letterCount>0;
+  for(let v=0;v<eRawH.length;v++){
+    const on=!lAny||letterOn[eLet[v]], h=curveFn(eRawH[v]);
+    pa.array[v*3+2]= on ? h*ENR_H*state.exag : 0;
+    const rgb=ramp(on?h:0), d=on?1:0.4;
+    ca.array[v*3]=rgb[0]*d; ca.array[v*3+1]=rgb[1]*d; ca.array[v*3+2]=rgb[2]*d;
+  }
+  pa.needsUpdate=true; ca.needsUpdate=true; enrGeom.computeVertexNormals();
 }
 const PEAKS=[['פ · Pharaoh',16,41],['ס · Joseph',14,40],['ק · Jacob',18,29],['ה ג ר · Hagar',4,16],['ש · years',20,5],['ט · Lot',8,19]];
 const vlab=document.getElementById('vlabels');
-const labelObjs=PEAKS.map(([t,li,ci])=>{const el=document.createElement('div');el.className='vlabel';el.textContent=t;vlab.appendChild(el);
-  return {el,x:(li/(enrich.NL-1)-0.5)*ENR_W,y:-((ci-1)/(enrich.NC-1))*ENR_D+ENR_D/2,li,ci};});
+const labelObjs=PEAKS.map(([t,li,ci])=>{const el=document.createElement('div');el.className='vlabel';el.textContent=t;vlab.appendChild(el);return {el,li,ci};});
 const _lv=new THREE.Vector3();
-function updateLabels(){
-  if(state.mode!=='meaning'&&state.mode!=='map'){for(const L of labelObjs)L.el.style.display='none';return;}
+function updateLabels(){              // Genesis peak labels (only when Genesis is in the selection)
+  const show=(state.mode==='meaning'||state.mode==='map')&&state.books.has(0)&&eRawH;
+  if(!show){ for(const L of labelObjs)L.el.style.display='none'; return; }
   for(const L of labelObjs){
-    const h=(enrSample(L.ci-1,L.li)-enrich.mn)/(enrich.mx-enrich.mn);
-    _lv.set(L.x,L.y,h*ENR_H*state.exag+6).project(camera);
+    const i=Math.round((L.ci-1)/Math.max(1,ENR_NC-1)*(ENR_FY-1)), j=Math.round(L.li/(ENR_NL-1)*(ENR_FX-1));
+    const vp=Math.min(eRawH.length-1, i*ENR_FX+j);
+    const h=curveFn(eRawH[vp])*ENR_H*state.exag;
+    const x=(L.li/(ENR_NL-1)-0.5)*ENR_W, y=-((L.ci-1)/Math.max(1,ENR_NC-1))*ENR_D+ENR_D/2;
+    _lv.set(x,y,h+6).project(camera);
     if(_lv.z>1){L.el.style.display='none';continue;}
     L.el.style.display='block';
     L.el.style.left=((_lv.x*0.5+0.5)*innerWidth)+'px';
@@ -544,7 +558,7 @@ function updateLabels(){
 }
 
 /* ---- state ---------------------------------------------------------------- */
-const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:2.2,
+const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
   books:new Set([0,1,2,3,4]), layout:'string'};
 
@@ -655,7 +669,7 @@ function bindRange(id,vid,fmt,set){
   const el=$(id); el.addEventListener('input',()=>{set(parseFloat(el.value));$(vid).textContent=fmt(el.value);});
 }
 bindRange('s-exag','v-exag',v=>parseFloat(v).toFixed(2)+'×',v=>{state.exag=v;
-  if(state.mode==='meaning'||state.mode==='map') updateEnrichHeight(); else recompute();});
+  if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();});
 bindRange('s-size','v-size',v=>parseFloat(v).toFixed(1),v=>{state.size=v;material.uniforms.uSize.value=v;});
 
 function setFloorCeil(){
@@ -669,7 +683,8 @@ $('s-ceil').addEventListener('input',e=>{state.ceil=parseInt(e.target.value);set
 
 document.querySelectorAll('#seg-curve button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-curve button').forEach(x=>x.classList.remove('on'));
-  b.classList.add('on'); state.curve=b.dataset.c; recompute();
+  b.classList.add('on'); state.curve=b.dataset.c;
+  if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();
 }));
 document.querySelectorAll('#seg-band button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-band button').forEach(x=>x.classList.remove('on'));
@@ -692,18 +707,18 @@ $('c-only').addEventListener('change',e=>{state.only=e.target.checked;applySelec
     b.addEventListener('click',()=>{
       if(state.chapters.has(c)){state.chapters.delete(c);b.classList.remove('on');}
       else{state.chapters.add(c);b.classList.add('on');}
-      clearText(); applySelection();
+      clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
     });
     wrap.appendChild(b);
   }
 })();
 $('b-all').addEventListener('click',()=>{
   for(let c=1;c<=50;c++)state.chapters.add(c);
-  document.querySelectorAll('.chip').forEach(x=>x.classList.add('on')); clearText(); applySelection();
+  document.querySelectorAll('.chip').forEach(x=>x.classList.add('on')); clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
 });
 $('b-clear').addEventListener('click',()=>{
   state.chapters.clear();
-  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
+  document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on')); clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
 });
 
 /* hebrew-letter toggles — same isolate/highlight behaviour as chapters */
@@ -716,25 +731,25 @@ $('b-clear').addEventListener('click',()=>{
     b.addEventListener('click',()=>{
       if(letterOn[i]){letterOn[i]=0;letterCount--;b.classList.remove('on');}
       else{letterOn[i]=1;letterCount++;b.classList.add('on');}
-      clearText(); applySelection();
+      clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
     });
     wrap.appendChild(b);
   });
 })();
 $('l-all').addEventListener('click',()=>{
   for(let i=0;i<22;i++)letterOn[i]=1; letterCount=22;
-  document.querySelectorAll('.lchip').forEach(x=>x.classList.add('on')); clearText(); applySelection();
+  document.querySelectorAll('.lchip').forEach(x=>x.classList.add('on')); clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
 });
 $('l-clear').addEventListener('click',()=>{
   letterOn.fill(0); letterCount=0;
-  document.querySelectorAll('.lchip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
+  document.querySelectorAll('.lchip').forEach(x=>x.classList.remove('on')); clearText(); applySelection(); if(state.mode==='meaning'||state.mode==='map') applyEnrich();
 });
 
 /* books: include/exclude + arrange (stack / string) */
 function refreshBooks(){
   clearText(); buildReader();
-  if(state.mode==='meaning'||state.mode==='map'){ applySelection(); }
-  else { recompute(); fitPlane(state.mode); fitView(state.mode); }
+  if(state.mode==='meaning'||state.mode==='map'){ rebuildEnrich(); applySelection(); }
+  else { recompute(); fitPlane(state.mode); }   // keep current camera — no reframe on book toggle
 }
 (function bchips(){
   const wrap=$('bchips');
@@ -854,7 +869,7 @@ function setMode(m){
   points.visible=!meshMode; enrGroup.visible=meshMode;
   if(meshMode){
     basePlane.visible=false; baseEdges.visible=false;
-    updateEnrichHeight();
+    rebuildEnrich();
     enrGeom.computeBoundingSphere();
     const bs=enrGeom.boundingSphere; target.copy(bs.center);
     sph.r=bs.radius*2.0; scene.fog.density=0.45/Math.max(1,bs.radius);
