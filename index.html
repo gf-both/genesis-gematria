@@ -147,6 +147,10 @@
   .lchip .lv{font-family:var(--mono);font-size:9px;color:var(--dim);margin-top:3px}
   .lchip.on{background:var(--gold);border-color:var(--gold)}
   .lchip.on .lg,.lchip.on .lv{color:var(--void)}
+  /* v1.1 enrichment-view peak labels */
+  #vlabels{position:fixed;inset:0;z-index:14;pointer-events:none}
+  .vlabel{position:absolute;transform:translate(-50%,-130%);font-family:var(--serif);font-size:13px;
+    color:#f6ecc8;text-shadow:0 1px 5px rgba(0,0,0,.95);white-space:nowrap;letter-spacing:.02em}
   :focus-visible{outline:2px solid var(--gold);outline-offset:2px}
   @media (max-width:680px){
     #ctrl{width:calc(100vw - 24px);right:12px;top:auto;bottom:12px;max-height:46vh}
@@ -179,6 +183,8 @@
     <button data-m="terrain" class="on">Terrain</button>
     <button data-m="scroll">Scroll</button>
     <button data-m="sphere">Sphere</button>
+    <button data-m="meaning">Meaning</button>
+    <button data-m="map">Map</button>
   </div>
 </div>
 <div id="reader" class="panel">
@@ -272,6 +278,7 @@
   <div class="tr"><span>On line</span><b id="tip-pos"></b></div>
 </div>
 
+<div id="vlabels"></div>
 <script src="three.min.js"></script>
 <script src="genesis_data.js"></script>
 <script src="genesis_en.js"></script>
@@ -479,6 +486,72 @@ const material=new THREE.ShaderMaterial({
 });
 const points=new THREE.Points(geom,material); scene.add(points);
 
+/* ===== v1.1 · enrichment surface: "Meaning" (3D) + "Map" (top-down) ======== */
+scene.add(new THREE.AmbientLight(0x2a3550,0.8));
+const sun=new THREE.DirectionalLight(0xfff1d6,1.25); sun.position.set(-0.6,1.0,0.55); scene.add(sun);
+const enrich=(function(){
+  const NC=50,NL=22;
+  const cnt=[]; for(let c=0;c<NC;c++)cnt.push(new Float64Array(NL));
+  const rt=new Float64Array(NC),ct=new Float64Array(NL); let tot=0;
+  for(let k=0;k<N;k++){const c=pChap[k]-1; if(c<0||c>=NC)continue; cnt[c][pBaseIdx[k]]++;}
+  for(let c=0;c<NC;c++)for(let l=0;l<NL;l++){rt[c]+=cnt[c][l];ct[l]+=cnt[c][l];tot+=cnt[c][l];}
+  const Z=[]; for(let c=0;c<NC;c++){Z.push(new Float64Array(NL));
+    for(let l=0;l<NL;l++){const p=ct[l]/tot,e=rt[c]*p,sd=Math.sqrt(e*(1-p))||1;
+      Z[c][l]=Math.max(-3.5,Math.min(10,(cnt[c][l]-e)/sd));}}
+  const B=[]; for(let c=0;c<NC;c++){B.push(new Float64Array(NL));
+    for(let l=0;l<NL;l++){let s=0,w=0;
+      for(let dc=-1;dc<=1;dc++)for(let dl=-1;dl<=1;dl++){const cc=c+dc,ll=l+dl;
+        if(cc>=0&&cc<NC&&ll>=0&&ll<NL){const wt=(dc||dl)?1:2;s+=Z[cc][ll]*wt;w+=wt;}}
+      B[c][l]=s/w;}}
+  let mn=1e9,mx=-1e9; for(let c=0;c<NC;c++)for(let l=0;l<NL;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];}
+  return {NC,NL,Z:B,mn,mx};
+})();
+const ENR_W=176,ENR_D=400,ENR_H=120,SUB=4;
+const FX=(enrich.NL-1)*SUB+1, FY=(enrich.NC-1)*SUB+1, VC=FX*FY;
+function enrSample(fi,fj){
+  const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,enrich.NC-1),l1=Math.min(l0+1,enrich.NL-1);
+  const tc=fi-c0,tl=fj-l0,G=enrich.Z;
+  return (G[c0][l0]*(1-tl)+G[c0][l1]*tl)*(1-tc)+(G[c1][l0]*(1-tl)+G[c1][l1]*tl)*tc;
+}
+const enrGeom=new THREE.BufferGeometry();
+const ePos=new Float32Array(VC*3),eCol=new Float32Array(VC*3),eBaseH=new Float32Array(VC);
+{let vp=0;
+ for(let i=0;i<FY;i++)for(let j=0;j<FX;j++){
+   const h=(enrSample(i/(FY-1)*(enrich.NC-1), j/(FX-1)*(enrich.NL-1))-enrich.mn)/(enrich.mx-enrich.mn);
+   eBaseH[vp]=h;
+   ePos[vp*3]=(j/(FX-1)-0.5)*ENR_W; ePos[vp*3+1]=-(i/(FY-1))*ENR_D+ENR_D/2; ePos[vp*3+2]=h*ENR_H;
+   const rgb=ramp(h); eCol[vp*3]=rgb[0];eCol[vp*3+1]=rgb[1];eCol[vp*3+2]=rgb[2]; vp++;
+ }}
+const eIdx=[];
+for(let i=0;i<FY-1;i++)for(let j=0;j<FX-1;j++){const a=i*FX+j,b=a+1,c=a+FX,d=c+1;eIdx.push(a,c,b,b,c,d);}
+enrGeom.setAttribute('position',new THREE.BufferAttribute(ePos,3));
+enrGeom.setAttribute('color',new THREE.BufferAttribute(eCol,3));
+enrGeom.setIndex(eIdx); enrGeom.computeVertexNormals();
+const enrGroup=new THREE.Group();
+enrGroup.add(new THREE.Mesh(enrGeom,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.92,metalness:0.0,side:THREE.DoubleSide})));
+enrGroup.visible=false; scene.add(enrGroup);
+function updateEnrichHeight(){
+  const pa=enrGeom.attributes.position;
+  for(let v=0;v<VC;v++) pa.array[v*3+2]=eBaseH[v]*ENR_H*state.exag;
+  pa.needsUpdate=true; enrGeom.computeVertexNormals();
+}
+const PEAKS=[['פ · Pharaoh',16,41],['ס · Joseph',14,40],['ק · Jacob',18,29],['ה ג ר · Hagar',4,16],['ש · years',20,5],['ט · Lot',8,19]];
+const vlab=document.getElementById('vlabels');
+const labelObjs=PEAKS.map(([t,li,ci])=>{const el=document.createElement('div');el.className='vlabel';el.textContent=t;vlab.appendChild(el);
+  return {el,x:(li/(enrich.NL-1)-0.5)*ENR_W,y:-((ci-1)/(enrich.NC-1))*ENR_D+ENR_D/2,li,ci};});
+const _lv=new THREE.Vector3();
+function updateLabels(){
+  if(state.mode!=='meaning'&&state.mode!=='map'){for(const L of labelObjs)L.el.style.display='none';return;}
+  for(const L of labelObjs){
+    const h=(enrSample(L.ci-1,L.li)-enrich.mn)/(enrich.mx-enrich.mn);
+    _lv.set(L.x,L.y,h*ENR_H*state.exag+6).project(camera);
+    if(_lv.z>1){L.el.style.display='none';continue;}
+    L.el.style.display='block';
+    L.el.style.left=((_lv.x*0.5+0.5)*innerWidth)+'px';
+    L.el.style.top=((-_lv.y*0.5+0.5)*innerHeight)+'px';
+  }
+}
+
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:2.2,
   chapters:new Set(), only:false, textActive:false, mode:'terrain', layers:false};
@@ -571,7 +644,8 @@ const $=id=>document.getElementById(id);
 function bindRange(id,vid,fmt,set){
   const el=$(id); el.addEventListener('input',()=>{set(parseFloat(el.value));$(vid).textContent=fmt(el.value);});
 }
-bindRange('s-exag','v-exag',v=>parseFloat(v).toFixed(2)+'×',v=>{state.exag=v;recompute();});
+bindRange('s-exag','v-exag',v=>parseFloat(v).toFixed(2)+'×',v=>{state.exag=v;
+  if(state.mode==='meaning'||state.mode==='map') updateEnrichHeight(); else recompute();});
 bindRange('s-size','v-size',v=>parseFloat(v).toFixed(1),v=>{state.size=v;material.uniforms.uSize.value=v;});
 
 function setFloorCeil(){
@@ -743,7 +817,21 @@ function fitView(m){
   userMoved=false; applyCam();
 }
 function setMode(m){
-  state.mode=m; fitPlane(m); recompute(); fitView(m);
+  state.mode=m;
+  const meshMode=(m==='meaning'||m==='map');
+  points.visible=!meshMode; enrGroup.visible=meshMode;
+  if(meshMode){
+    basePlane.visible=false; baseEdges.visible=false;
+    updateEnrichHeight();
+    enrGeom.computeBoundingSphere();
+    const bs=enrGeom.boundingSphere; target.copy(bs.center);
+    sph.r=bs.radius*2.0; scene.fog.density=0.45/Math.max(1,bs.radius);
+    if(m==='map'){ sph.phi=Math.PI/2-0.001; sph.theta=0.0; userMoved=true; }
+    else { sph.phi=0.92; sph.theta=0.62; userMoved=false; }
+    applyCam();
+  } else {
+    fitPlane(m); recompute(); fitView(m);
+  }
 }
 let userMoved=false;
 const dom=renderer.domElement;
@@ -820,6 +908,7 @@ function animate(){
   requestAnimationFrame(animate);
   if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
+  updateLabels();
   renderer.render(scene,camera);
 }
 
