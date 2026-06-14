@@ -535,7 +535,9 @@ const sun=new THREE.DirectionalLight(0xfff1d6,1.25); sun.position.set(-0.6,1.0,0
 const ENR_W=176, ENR_D=400, ENR_H=120, SUB=4, ENR_NL=22;
 const enrGeom=new THREE.BufferGeometry();
 const enrGroup=new THREE.Group();
-enrGroup.add(new THREE.Mesh(enrGeom,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.92,metalness:0.0,side:THREE.DoubleSide})));
+const enrMesh=new THREE.Mesh(enrGeom,new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.92,metalness:0.0,side:THREE.DoubleSide}));
+enrMesh.frustumCulled=false;            // geometry is rebuilt in place; avoid culling on stale bounds
+enrGroup.add(enrMesh);
 enrGroup.visible=false; scene.add(enrGroup);
 let eRawH=null, eLet=null, ENR_NC=1, ENR_FX=1, ENR_FY=1;
 const WBANDS=24; let curBins=ENR_NL;     // letter mode = 22 letters · word mode = gematria bands
@@ -593,6 +595,7 @@ function rebuildEnrich(){             // rebuild surface geometry for current bo
   enrGeom.setAttribute('position',new THREE.BufferAttribute(pos,3));
   enrGeom.setAttribute('color',new THREE.BufferAttribute(col,3));
   enrGeom.setIndex(idx);
+  enrGeom.computeBoundingSphere(); enrGeom.computeBoundingBox();
   applyEnrich();
 }
 function applyEnrich(){               // re-shape from curve + exaggerate + layers + letter filter (live)
