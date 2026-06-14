@@ -110,8 +110,9 @@
   #tip .tr{display:flex;justify-content:space-between;gap:16px;font-size:11px;color:var(--dim);margin:3px 0}
   #tip .tr b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
   /* ---- reading panel ---- */
-  #reader-toggle{position:fixed;z-index:21;left:18px;top:166px;padding:8px 13px}
-  #reader{left:18px;top:208px;bottom:202px;width:384px;max-width:calc(100vw - 36px);
+  #modes{top:18px;left:330px;padding:12px 14px;z-index:21}
+  #modes .mt{display:block;margin-top:11px}
+  #reader{left:18px;top:196px;bottom:202px;width:384px;max-width:calc(100vw - 36px);
     z-index:20;display:flex;flex-direction:column;padding:0;overflow:hidden;
     transition:transform .25s ease,opacity .25s ease}
   #reader.hidden{transform:translateX(-115%);opacity:0;pointer-events:none}
@@ -137,7 +138,7 @@
   #reader-body ::selection{background:rgba(227,178,60,.42);color:#fff}
   #reader-body ::-moz-selection{background:rgba(227,178,60,.42);color:#fff}
   /* ---- hebrew letter chips ---- */
-  .lchips{display:flex;flex-wrap:wrap;gap:5px;padding:2px}
+  .lchips{display:flex;flex-wrap:wrap;gap:5px;padding:2px;direction:rtl}
   .lchip{display:flex;flex-direction:column;align-items:center;justify-content:center;
     width:40px;padding:5px 0 4px;border-radius:8px;cursor:pointer;
     background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);transition:.15s}
@@ -154,8 +155,8 @@
     #stats{display:none}
     #reset{top:14px;right:12px;bottom:auto}
     #hint{display:none}
-    #reader-toggle{top:auto;bottom:12px;left:12px}
-    #reader{left:8px;right:8px;width:auto;max-width:none;top:60px;bottom:auto;max-height:46vh}
+    #modes{left:12px;right:auto;top:auto;bottom:12px}
+    #reader{left:8px;right:8px;width:auto;max-width:none;top:104px;bottom:auto;max-height:42vh}
   }
 </style>
 </head>
@@ -172,7 +173,14 @@
   </div>
 </div>
 
-<button id="reader-toggle" class="panel act">✦ Text</button>
+<div id="modes" class="panel">
+  <span class="lbl">Layout</span>
+  <div class="seg" id="seg-mode">
+    <button data-m="terrain" class="on">Terrain</button>
+    <button data-m="scroll">Scroll</button>
+    <button data-m="sphere">Sphere</button>
+  </div>
+</div>
 <div id="reader" class="panel">
   <div class="rhead">
     <span class="lbl">Text · select to isolate</span>
@@ -214,6 +222,16 @@
   </div>
 
   <div class="grp">
+    <span class="lbl">Render</span>
+    <div class="seg" id="seg-render">
+      <button data-r="dots" class="on">Dots</button>
+      <button data-r="layers">Layers</button>
+    </div>
+    <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">2.2</span></div>
+    <input type="range" id="s-size" min="0.5" max="6" step="0.1" value="2.2">
+  </div>
+
+  <div class="grp">
     <span class="lbl">Highlight · chapters</span>
     <div class="chips" id="chips"></div>
     <div class="acts">
@@ -231,12 +249,6 @@
       <button class="act" id="l-all">Select all</button>
       <button class="act" id="l-clear">Clear</button>
     </div>
-  </div>
-
-  <div class="grp">
-    <span class="lbl">Render</span>
-    <div class="row"><span>Point size</span><span class="val" id="v-size">2.2</span></div>
-    <input type="range" id="s-size" min="0.5" max="6" step="0.1" value="2.2">
   </div>
 </div>
 
@@ -294,6 +306,8 @@ function ramp(t){ // t in 0..1 -> rgb
 
 /* ---- layout constants ----------------------------------------------------- */
 const LETTER_GAP=1.0, WORD_GAP=0.7, LINE_GAP=1.0, HEIGHT_MAX=55;
+/* scroll mode = continuous wrapped columns (sofer-like); sphere = globe relief */
+const SCROLL_W=28, SCROLL_H=60, SCROLL_COLGAP=6, SPHERE_R=320;
 
 /* ---- flatten data into per-point arrays ----------------------------------- */
 let N=0;
@@ -309,7 +323,18 @@ const pVerse=new Int16Array(N);
 const pCol=new Int16Array(N);             // 1-based position on its line
 const pLineLen=new Int16Array(N);
 const pCode=new Int32Array(N);            // unicode of consonant
+/* per-mode base coordinates (height z is added at render time from gematria) */
+const baseTerX=new Float32Array(N), baseTerY=new Float32Array(N);   // terrain
+const baseScrX=new Float32Array(N), baseScrY=new Float32Array(N);   // scroll
+const dirX=new Float32Array(N), dirY=new Float32Array(N), dirZ=new Float32Array(N); // sphere unit dirs
 
+function centre(ax,ay){
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  for(let k=0;k<N;k++){const X=ax[k],Y=ay[k];
+    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
+  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
+  for(let k=0;k<N;k++){ax[k]-=cx;ay[k]-=cy;}
+}
 (function build(){
   let i=0, line=0;
   for(let c=0;c<DATA.length;c++){
@@ -322,9 +347,8 @@ const pCode=new Int32Array(N);            // unicode of consonant
         const word=verse[wi];
         for(let li=0;li<word.length;li++){
           const ch=word[li], code=ch.charCodeAt(0);
-          positions[i*3]   = -x;          // right-to-left
-          positions[i*3+1] = -line;       // verses stack downward
-          positions[i*3+2] = 0;
+          baseTerX[i] = -x;       // terrain: right-to-left within verse
+          baseTerY[i] = -line;    // verses stack downward
           const g=GEM[ch]||0;
           gemStd[i]=g; gemSof[i]=SOFIT[ch]||g;
           pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen; pCode[i]=code;
@@ -335,12 +359,22 @@ const pCode=new Int32Array(N);            // unicode of consonant
       line++;
     }
   }
-  // centre the cloud on x/y
-  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
-  for(let k=0;k<N;k++){const X=positions[k*3],Y=positions[k*3+1];
-    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
-  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
-  for(let k=0;k<N;k++){positions[k*3]-=cx;positions[k*3+1]-=cy;}
+  centre(baseTerX,baseTerY);
+  // scroll: continuous stream, no verse breaks, wrapped into right-to-left columns
+  const perCol=SCROLL_W*SCROLL_H;
+  for(let k=0;k<N;k++){
+    const K=Math.floor(k/perCol), rem=k%perCol;
+    const l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
+    baseScrX[k] = -cc - K*(SCROLL_W+SCROLL_COLGAP);
+    baseScrY[k] = -l;
+  }
+  centre(baseScrX,baseScrY);
+  // sphere: fibonacci distribution by reading order
+  const GA=Math.PI*(3-Math.sqrt(5));
+  for(let k=0;k<N;k++){
+    const y=1-2*((k+0.5)/N), r=Math.sqrt(Math.max(0,1-y*y)), ph=GA*k;
+    dirX[k]=Math.cos(ph)*r; dirY[k]=y; dirZ[k]=Math.sin(ph)*r;
+  }
 })();
 
 /* ---- verse index: maps text spans <-> point indices (same order as build) - */
@@ -377,20 +411,28 @@ document.body.appendChild(renderer.domElement);
 
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,8000);
 
-/* base "page" plane at z=0 with hairline edge frame */
-(function basePlane(){
-  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
-  for(let k=0;k<N;k++){const X=positions[k*3],Y=positions[k*3+1];
-    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
-  const pad=14, w=(maxx-minx)+pad*2, h=(maxy-miny)+pad*2;
-  const geo=new THREE.PlaneGeometry(w,h);
+/* base "page" plane at z=0 with hairline edge frame — refit per layout mode */
+let basePlane, baseEdges;
+(function makePlane(){
   const mat=new THREE.MeshBasicMaterial({color:0x0a0d18,transparent:true,opacity:0.55,
     side:THREE.DoubleSide,depthWrite:false});
-  const plane=new THREE.Mesh(geo,mat); plane.position.set(0,0,-0.5); scene.add(plane);
-  const edges=new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+  basePlane=new THREE.Mesh(new THREE.PlaneGeometry(1,1),mat);
+  basePlane.position.set(0,0,-0.5); scene.add(basePlane);
+  baseEdges=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1,1)),
     new THREE.LineBasicMaterial({color:0xe3b23c,transparent:true,opacity:0.22}));
-  edges.position.copy(plane.position); scene.add(edges);
+  baseEdges.position.copy(basePlane.position); scene.add(baseEdges);
 })();
+function fitPlane(m){
+  if(m==='sphere'){ basePlane.visible=false; baseEdges.visible=false; return; }
+  basePlane.visible=true; baseEdges.visible=true;
+  const ax=m==='scroll'?baseScrX:baseTerX, ay=m==='scroll'?baseScrY:baseTerY;
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  for(let k=0;k<N;k++){const X=ax[k],Y=ay[k];
+    if(X<minx)minx=X;if(X>maxx)maxx=X;if(Y<miny)miny=Y;if(Y>maxy)maxy=Y;}
+  const pad=14, w=(maxx-minx)+pad*2, h=(maxy-miny)+pad*2;
+  basePlane.geometry.dispose(); basePlane.geometry=new THREE.PlaneGeometry(w,h);
+  baseEdges.geometry.dispose(); baseEdges.geometry=new THREE.EdgesGeometry(basePlane.geometry);
+}
 
 /* round soft sprite texture */
 function sprite(){
@@ -408,26 +450,30 @@ geom.setAttribute('aColor',new THREE.BufferAttribute(colors,3));
 geom.setAttribute('aSel',new THREE.BufferAttribute(sel,1));
 
 const material=new THREE.ShaderMaterial({
-  uniforms:{uSize:{value:2.2},uScale:{value:340.0},uTex:{value:sprite()}},
+  uniforms:{uSize:{value:2.2},uScale:{value:340.0},uTex:{value:sprite()},uLayers:{value:0.0}},
   transparent:true, depthWrite:false, blending:THREE.NormalBlending,
   vertexShader:`
     attribute vec3 aColor; attribute float aSel;
-    uniform float uSize, uScale; varying vec3 vColor; varying float vSel;
+    uniform float uSize, uScale, uLayers; varying vec3 vColor; varying float vSel;
     void main(){
       vColor=aColor; vSel=aSel;
       vec4 mv=modelViewMatrix*vec4(position,1.0);
       if(aSel<-0.5){ gl_Position=vec4(2.0,2.0,2.0,1.0); gl_PointSize=0.0; return; }
       float s=uSize; if(aSel<0.5) s*=0.55;
+      s *= mix(1.0, 3.4, uLayers);            // layers: fatten discs so they fuse into strata
       gl_PointSize=max(1.0, s*(uScale/ -mv.z));
       gl_Position=projectionMatrix*mv;
     }`,
   fragmentShader:`
-    uniform sampler2D uTex; varying vec3 vColor; varying float vSel;
+    uniform sampler2D uTex; uniform float uLayers; varying vec3 vColor; varying float vSel;
     void main(){
-      vec4 t=texture2D(uTex,gl_PointCoord); if(t.a<0.03) discard;
-      vec3 c=vColor; float a=t.a;
+      vec4 t=texture2D(uTex,gl_PointCoord);
+      float d=distance(gl_PointCoord,vec2(0.5));
+      float a = uLayers>0.5 ? (d<0.5?1.0:0.0) : t.a;   // layers: flat solid discs
+      if(a<0.03) discard;
+      vec3 c=vColor;
       if(vSel<0.5 && vSel>-0.5){ c=vec3(0.34,0.34,0.39); a*=0.28; }
-      else { a=min(1.0,a*1.12); }
+      else if(uLayers<0.5){ a=min(1.0,a*1.12); }
       gl_FragColor=vec4(c,a);
     }`
 });
@@ -435,7 +481,7 @@ const points=new THREE.Points(geom,material); scene.add(points);
 
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:2.2,
-  chapters:new Set(), only:false, textActive:false};
+  chapters:new Set(), only:false, textActive:false, mode:'terrain', layers:false};
 
 function curveFn(v){
   switch(state.curve){
@@ -447,15 +493,27 @@ function curveFn(v){
 }
 
 /* recompute heights + colours (band / curve / exaggerate / sofit) */
+const LAYER_BANDS=11;
 function recompute(){
   const lo=state.floor, hi=Math.max(lo+1,state.ceil), span=hi-lo;
   const posA=geom.attributes.position, colA=geom.attributes.aColor;
+  const m=state.mode, lay=state.layers;
   for(let k=0;k<N;k++){
     const g=state.sofit?gemSof[k]:gemStd[k];
     let nv=(g-lo)/span; if(nv<0)nv=0; else if(nv>1)nv=1;
-    const cv=curveFn(nv);
-    posA.array[k*3+2]=cv*HEIGHT_MAX*state.exag;
-    const rgb=ramp(cv);
+    let cv=curveFn(nv);
+    // tectonic layers: quantise height + colour into discrete strata
+    const hv = lay ? Math.round(cv*(LAYER_BANDS-1))/(LAYER_BANDS-1) : cv;
+    const h = hv*HEIGHT_MAX*state.exag;
+    if(m==='sphere'){
+      const rr=SPHERE_R + h*1.7;
+      posA.array[k*3]=dirX[k]*rr; posA.array[k*3+1]=dirY[k]*rr; posA.array[k*3+2]=dirZ[k]*rr;
+    }else{
+      const bx = m==='scroll'?baseScrX[k]:baseTerX[k];
+      const by = m==='scroll'?baseScrY[k]:baseTerY[k];
+      posA.array[k*3]=bx; posA.array[k*3+1]=by; posA.array[k*3+2]=h;
+    }
+    const rgb=ramp(hv);
     colA.array[k*3]=rgb[0];colA.array[k*3+1]=rgb[1];colA.array[k*3+2]=rgb[2];
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
@@ -588,6 +646,18 @@ $('l-clear').addEventListener('click',()=>{
   document.querySelectorAll('.lchip').forEach(x=>x.classList.remove('on')); clearText(); applySelection();
 });
 
+/* layout mode (terrain / scroll / sphere) */
+document.querySelectorAll('#seg-mode button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); setMode(b.dataset.m);
+}));
+/* render style (dots / tectonic layers) — works in every layout mode */
+document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-render button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state.layers=(b.dataset.r==='layers');
+  material.uniforms.uLayers.value=state.layers?1:0; recompute();
+}));
+
 /* ---- reading panel: highlight text -> reflect only those letters ---------- */
 function escHtml(s){return String(s).replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'})[m]);}
 (function buildReader(){
@@ -648,7 +718,6 @@ function mapSelection(){
 $('reader-clear').addEventListener('click',()=>{
   clearText(); const s=window.getSelection(); if(s) s.removeAllRanges(); applySelection();
 });
-$('reader-toggle').addEventListener('click',()=>{ $('reader').classList.toggle('hidden'); });
 
 /* ---- custom orbit / zoom / pan controls ---------------------------------- */
 const target=new THREE.Vector3(0,0,0);
@@ -661,6 +730,20 @@ function applyCam(){
     target.y+sph.r*Math.cos(sph.phi),
     target.z+sph.r*Math.sin(sph.phi)*Math.cos(sph.theta));
   camera.lookAt(target);
+}
+function fitView(m){
+  geom.computeBoundingSphere();
+  const bs=geom.boundingSphere;
+  target.copy(bs.center);
+  sph.r=bs.radius*2.0;
+  scene.fog.density=0.6/Math.max(1,bs.radius);
+  if(m==='sphere'){ sph.phi=1.05; sph.theta=0.6; }
+  else if(m==='scroll'){ sph.phi=0.8; sph.theta=0.0; }
+  else { sph.phi=0.92; sph.theta=0.55; }
+  userMoved=false; applyCam();
+}
+function setMode(m){
+  state.mode=m; fitPlane(m); recompute(); fitView(m);
 }
 let userMoved=false;
 const dom=renderer.domElement;
@@ -700,9 +783,7 @@ function panBy(dx,dy){
   const up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);
   target.addScaledVector(right,-dx*f); target.addScaledVector(up,dy*f); applyCam();
 }
-$('reset').addEventListener('click',()=>{
-  target.set(0,0,0); sph.r=760; sph.theta=0.55; sph.phi=0.92; userMoved=true; applyCam();
-});
+$('reset').addEventListener('click',()=>{ fitView(state.mode); });
 
 /* ---- hover / pick --------------------------------------------------------- */
 const ray=new THREE.Raycaster(); ray.params.Points.threshold=1.6;
@@ -743,7 +824,7 @@ function animate(){
 }
 
 /* ---- boot ----------------------------------------------------------------- */
-recompute(); applyCam(); animate();
+fitPlane(state.mode); recompute(); fitView(state.mode); animate();
 setTimeout(()=>{ $('loader').classList.add('hide'); $('title').classList.add('in'); },650);
 })();
 </script>
