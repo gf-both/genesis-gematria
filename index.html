@@ -597,6 +597,12 @@ function rebuildEnrich(){             // rebuild surface geometry for current bo
   enrGeom.setIndex(idx);
   enrGeom.computeBoundingSphere(); enrGeom.computeBoundingBox();
   applyEnrich();
+  try{ let mn=1e9,mx=-1e9; for(let v=0;v<eRawH.length;v++){const h=eRawH[v]; if(h<mn)mn=h; if(h>mx)mx=h;}
+    const pz=enrGeom.attributes.position.array; let zmn=1e9,zmx=-1e9,znan=0;
+    for(let v=2;v<pz.length;v+=3){const z=pz[v]; if(Number.isNaN(z))znan++; if(z<zmn)zmn=z; if(z>zmx)zmx=z;}
+    enrGeom.computeBoundingSphere(); const bs=enrGeom.boundingSphere;
+    document.title='DBG '+state.gran+' eR='+mn.toFixed(2)+'/'+mx.toFixed(2)+' z='+zmn.toFixed(1)+'/'+zmx.toFixed(1)+' zNaN='+znan+' bsR='+(bs?bs.radius.toFixed(1):'null')+' VC='+eRawH.length; }
+  catch(e){ document.title='DBGERR '+e.message; }
 }
 function applyEnrich(){               // re-shape from curve + exaggerate + layers + letter filter (live)
   if(!eRawH) return;
