@@ -1319,8 +1319,9 @@ function applyHash(){ const h=location.hash.slice(1); if(!h) return false;
   if(q.g)state.gran=q.g; if(q.l)state.layout=q.l; if(q.c)state.curve=q.c;
   if(q.f)state.floor=+q.f; if(q.ce)state.ceil=+q.ce;
   state.sofit=q.so==='1'; state.layers=q.la==='1'; state.glyph=q.gl==='1'; if(q.cb)state.colorBy=q.cb;
-  syncUI(); buildReader();
+  buildReader();
   if(q.m) setMode(q.m); else recompute();
+  syncUI();
   return true;
 }
 
