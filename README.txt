@@ -1,4 +1,4 @@
-Torah · Topology of Gematria — offline build
+Torah · Topography of Gematria — offline build
 
 FILES
   index.html      the app (open by double-clicking; works fully offline)
