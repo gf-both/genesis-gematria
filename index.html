@@ -26,11 +26,13 @@
     --mono:'SF Mono',Menlo,Consolas,'Liberation Mono',monospace;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:var(--void);color:var(--ink);
+  html,body{margin:0;height:100%;background:transparent;color:var(--ink);
     font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
   canvas{display:block;position:fixed;inset:0}
   /* ---- animated background layer (themes) ---- */
-  #bgfx{position:fixed;inset:0;z-index:-1;display:none}
+  #bgfx{position:fixed;inset:0;z-index:-1;display:block;background:#06070d}
+  body.bg-dark #bgfx{background:#06070d}
+  body.bg-light #bgfx{background:#ece6d8}
   body.bg-cosmos #bgfx{display:block;background:radial-gradient(circle at 50% 38%,#191d44 0%,#0a0c1c 55%,#050610 100%)}
   body.bg-aurora #bgfx{display:block;background:#04121a;overflow:hidden}
   body.bg-aurora #bgfx::after{content:"";position:absolute;inset:-30%;
@@ -39,7 +41,7 @@
   body.bg-psychedelic #bgfx{display:block;
     background:linear-gradient(120deg,#ff0066,#8a2be2,#00e0d0,#ffd000,#ff0066);
     background-size:400% 400%;animation:psy 20s ease-in-out infinite}
-  body.bg-psychedelic #bgfx::after{content:"";position:absolute;inset:0;background:rgba(8,6,16,.46)}
+  body.bg-psychedelic #bgfx::after{content:"";position:absolute;inset:0;background:rgba(8,6,16,.32)}
   body.bg-fire #bgfx{display:block;
     background:linear-gradient(0deg,#0c0300 0%,#2a0a00 28%,#6e1900 55%,#c4480a 80%,#ffae3b 100%);
     background-size:160% 220%;animation:fire 7s ease-in-out infinite}
@@ -1514,7 +1516,7 @@ function applyTheme(t){
   const cfg=THEMES[t]||THEMES.dark; state.theme=t;
   document.body.className=document.body.className.replace(/\bbg-\S+/g,'').replace(/\blight\b/g,'').trim();
   document.body.classList.add('bg-'+t); if(cfg.light) document.body.classList.add('light');
-  if(cfg.solid!=null) renderer.setClearColor(cfg.solid,1); else renderer.setClearColor(0x000000,0);
+  renderer.setClearColor(0x000000,0);   /* transparent: the #bgfx layer paints the background */
   if(scene.fog) scene.fog.color.setHex(cfg.fog);
   STOPS = cfg.ramp==='light'?STOPS_LIGHT:STOPS_DARK;
   if(material&&material.uniforms.uLight) material.uniforms.uLight.value=cfg.light?1:0;
