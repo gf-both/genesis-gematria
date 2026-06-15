@@ -108,10 +108,33 @@
   #tip.on{opacity:1}
   #tip .glyph{font-family:var(--serif);font-size:46px;line-height:1;color:var(--gold);text-align:center;margin-bottom:8px}
   #tip .xlit{display:none;text-align:center;font-style:italic;font-size:11px;color:var(--dim);margin:-4px 0 7px}
-  #tip .en{display:none;text-align:center;font-size:13px;color:var(--ink);margin:0 0 9px;max-width:230px;line-height:1.25}
-  #tip.word .xlit,#tip.word .en{display:block}
+  #tip .en{display:none;text-align:center;font-size:13px;color:var(--ink);margin:0 0 4px;max-width:230px;line-height:1.25}
+  #tip .mr{display:none;text-align:center;font-size:10px;letter-spacing:.04em;color:var(--gold);opacity:.78;margin:0 0 9px}
+  #tip.word .xlit,#tip.word .en,#tip.word .mr{display:block}
   #tip .tr{display:flex;justify-content:space-between;gap:16px;font-size:11px;color:var(--dim);margin:3px 0}
   #tip .tr b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  /* ---- focus card (double-click a word) ---- */
+  #focus{position:fixed;left:18px;bottom:18px;z-index:31;width:236px;display:none;
+    background:rgba(10,12,20,.94);border:1px solid var(--panelbrd);border-radius:13px;
+    padding:14px 16px;-webkit-backdrop-filter:blur(9px);backdrop-filter:blur(9px);box-shadow:0 10px 36px rgba(0,0,0,.6)}
+  #focus.on{display:block}
+  #focus .fg{font-family:var(--serif);font-size:40px;line-height:1;color:var(--gold);text-align:center;direction:rtl;margin-bottom:5px}
+  #focus .fx{text-align:center;font-style:italic;font-size:11px;color:var(--dim)}
+  #focus .fe{text-align:center;font-size:13px;color:var(--ink);margin:5px 0 2px;line-height:1.25}
+  #focus .fm{text-align:center;font-size:10px;letter-spacing:.04em;color:var(--gold);opacity:.78;margin-bottom:9px}
+  #focus .fr{display:flex;justify-content:space-between;gap:14px;font-size:11px;color:var(--dim);margin:3px 0}
+  #focus .fr b{color:var(--ink);font-family:var(--mono)}
+  #focus .fr b .he{font-family:var(--serif);color:var(--gold)}
+  #focus .fbtns{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px}
+  #focus .fbtns button{font:inherit;font-size:11px;padding:6px 4px;border-radius:8px;cursor:pointer;
+    background:rgba(227,178,60,.08);border:1px solid var(--panelbrd);color:var(--dim)}
+  #focus .fbtns button:hover{color:var(--ink);border-color:var(--gold)}
+  #focus .fclose{position:absolute;top:9px;right:11px;cursor:pointer;color:var(--dim);font-size:15px;line-height:1}
+  #focus .fclose:hover{color:var(--ink)}
+  #poslegend{display:none;margin-top:9px;font-size:10px;color:var(--dim)}
+  #poslegend.on{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}
+  #poslegend span{display:flex;align-items:center;gap:5px}
+  #poslegend i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:0 0 auto}
   /* ---- reading panel ---- */
   #modes{top:18px;left:330px;padding:12px 14px;z-index:21}
   #modes .mt{display:block;margin-top:11px}
@@ -206,11 +229,24 @@
     <button data-m="map">Map</button>
   </div>
   <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
+  <div class="seg" id="seg-tour" style="margin-top:8px">
+    <button data-t="flyby" class="on">Fly-by</button>
+    <button data-t="dive">Deep dive</button>
+  </div>
+  <div class="row" style="margin-top:8px"><span>Tour speed</span><span class="val" id="v-tspeed">1.0×</span></div>
+  <input type="range" id="s-tspeed" min="0.2" max="3" step="0.1" value="1">
+  <div class="acts" style="margin-top:9px">
+    <button class="act" id="btn-share">Share link</button>
+    <button class="act" id="btn-obj">Export .obj</button>
+  </div>
 </div>
 <div id="search" class="panel">
   <input id="search-in" type="text" autocomplete="off" spellcheck="false"
     placeholder="Jump to · e.g. Genesis 1:1 · Exodus 3 · Lev 19:18">
   <div id="search-hint"></div>
+  <input id="meaning-in" type="text" autocomplete="off" spellcheck="false" style="margin-top:8px"
+    placeholder="Find by meaning · e.g. king · light · covenant">
+  <div id="meaning-hint"></div>
 </div>
 <div id="reader" class="panel">
   <div class="rhead">
@@ -266,6 +302,12 @@
     </div>
     <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">3.6</span></div>
     <input type="range" id="s-size" min="0.5" max="9" step="0.1" value="3.6">
+    <div class="row" style="margin-top:11px;margin-bottom:4px"><span>Colour by</span></div>
+    <div class="seg" id="seg-color">
+      <button data-cb="gem" class="on">Gematria</button>
+      <button data-cb="pos">Part of speech</button>
+    </div>
+    <div id="poslegend"></div>
   </div>
 
   <div class="grp">
@@ -320,9 +362,27 @@
   <div class="glyph" id="tip-g"></div>
   <div class="xlit" id="tip-x"></div>
   <div class="en" id="tip-en"></div>
+  <div class="mr" id="tip-mr"></div>
   <div class="tr"><span>Reference</span><b id="tip-ref"></b></div>
   <div class="tr"><span>Gematria</span><b id="tip-val"></b></div>
   <div class="tr"><span>On line</span><b id="tip-pos"></b></div>
+</div>
+
+<div id="focus">
+  <div class="fclose" id="fx-close">×</div>
+  <div class="fg" id="fx-g"></div>
+  <div class="fx" id="fx-x"></div>
+  <div class="fe" id="fx-en"></div>
+  <div class="fm" id="fx-mr"></div>
+  <div class="fr"><span>Reference</span><b id="fx-ref"></b></div>
+  <div class="fr"><span>Gematria (word)</span><b id="fx-val"></b></div>
+  <div class="fr"><span>Root</span><b id="fx-root"></b></div>
+  <div class="fbtns">
+    <button id="fx-broot">Same root</button>
+    <button id="fx-bval">Same value</button>
+    <button id="fx-bread">Find in text</button>
+    <button id="fx-bclear">Clear</button>
+  </div>
 </div>
 
 <div id="vlabels"></div>
@@ -421,6 +481,18 @@ const VERSES=[];
 let MAXW=1, MAXWsof=1;
 for(let k=0;k<N;k++){ if(pWsum[k]>MAXW)MAXW=pWsum[k]; if(pWsumSof[k]>MAXWsof)MAXWsof=pWsumSof[k]; }
 const textMask=new Uint8Array(N);   // 1 = letter is in current text selection
+
+/* ---- v1.9 · per-word lexical data (root + part of speech) ----------------- */
+/* GLOSS[he] = [english gloss, transliteration, strongs lemma, POS letter, morphology] */
+const POS_ORDER=['V','N','A','R','C','P','D','T','S'];
+const POS_LABEL={V:'verb',N:'noun',A:'adjective',R:'preposition',C:'conjunction',P:'pronoun',D:'adverb',T:'particle',S:'suffix'};
+const POS_COL={V:[0.93,0.46,0.30],N:[0.36,0.62,0.93],A:[0.46,0.81,0.53],R:[0.76,0.55,0.93],
+  C:[0.62,0.63,0.70],P:[0.40,0.83,0.87],D:[0.95,0.84,0.46],T:[0.92,0.55,0.80],S:[0.72,0.72,0.55]};
+const POS_COL_ARR=POS_ORDER.map(l=>POS_COL[l]); const POS_OTHER=[0.5,0.5,0.56];
+const wordLemma=new Int32Array(WORDS.length);
+const wordPOS=new Uint8Array(WORDS.length).fill(255);
+(function(){ for(let i=0;i<WORDS.length;i++){ const g=GLOSS[WORDS[i].he]; if(!g)continue;
+  wordLemma[i]=g[2]||0; const pi=POS_ORDER.indexOf(g[3]); if(pi>=0)wordPOS[i]=pi; } })();
 
 /* ---- aleph-bet index + per-letter filter (base + final toggle together) -- */
 const ALEPHBET=[['א',1],['ב',2],['ג',3],['ד',4],['ה',5],['ו',6],['ז',7],['ח',8],['ט',9],['י',10],
@@ -646,7 +718,8 @@ function updateLabels(){              // Genesis peak labels (only when Genesis 
 /* ---- state ---------------------------------------------------------------- */
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
-  books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter'};
+  books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter',
+  colorBy:'gem', tourSpeed:1, tourMode:'flyby'};
 
 function curveFn(v){
   switch(state.curve){
@@ -699,8 +772,13 @@ function recompute(){
       Z=h;
     }
     posA.array[k*3]=X; posA.array[k*3+1]=Y; posA.array[k*3+2]=Z;
-    const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
-    colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
+    if(state.colorBy==='pos'){
+      const pi=wordPOS[pWid[k]], pc=(pi===255?POS_OTHER:POS_COL_ARR[pi]);
+      colA.array[k*3]=pc[0]; colA.array[k*3+1]=pc[1]; colA.array[k*3+2]=pc[2];
+    } else {
+      const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
+      colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
+    }
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
   geom.computeBoundingSphere(); geom.computeBoundingBox();
@@ -1037,14 +1115,16 @@ function markUser(){userMoved=true; tween=null;
 /* fly-to (smooth zoom into a section) + auto fly-through tour */
 let tween=null, tourP=0;
 function tourStep(){
-  if(state.mode==='sphere'||state.mode==='meaning'||state.mode==='map'){ sph.theta+=0.0013; applyCam(); return; }
+  const sp=state.tourSpeed||1, dive=(state.tourMode==='dive');
+  if(state.mode==='sphere'||state.mode==='meaning'||state.mode==='map'){
+    sph.theta+=0.0013*sp; if(dive){ sph.phi+=Math.sin(Date.now()*0.0004)*0.004*sp; } applyCam(); return; }
   geom.computeBoundingBox(); const bb=geom.boundingBox; if(!bb){applyCam();return;}
   const ex=bb.max.x-bb.min.x, ey=bb.max.y-bb.min.y, cz=(bb.min.z+bb.max.z)/2;
-  tourP+=0.0009; if(tourP>1)tourP=0;
+  tourP+=(dive?0.00045:0.0009)*sp; if(tourP>1)tourP=0;
   if(ex>=ey){ target.set(bb.max.x+(bb.min.x-bb.max.x)*tourP,(bb.min.y+bb.max.y)/2,cz);
-    sph.r=Math.max(130,ey*1.3+150); sph.phi=1.02; sph.theta=0.28; }
+    sph.r=dive?Math.max(55,ey*0.5+65):Math.max(130,ey*1.3+150); sph.phi=dive?1.14:1.02; sph.theta=0.28; }
   else { target.set((bb.min.x+bb.max.x)/2, bb.max.y+(bb.min.y-bb.max.y)*tourP, cz);
-    sph.r=Math.max(130,ex*1.6+150); sph.phi=0.95; sph.theta=0.5; }
+    sph.r=dive?Math.max(55,ex*0.55+65):Math.max(130,ex*1.6+150); sph.phi=dive?1.06:0.95; sph.theta=0.5; }
   applyCam();
 }
 function flyTo(cx,cy,cz,r){ tween={t:0,fT:target.clone(),tT:new THREE.Vector3(cx,cy,cz),fR:sph.r,tR:Math.max(60,r)}; userMoved=true; }
@@ -1113,6 +1193,7 @@ function doHover(){
     const gl=GLOSS[w.he];
     $('tip-x').textContent = gl&&gl[1] ? gl[1] : '';
     $('tip-en').textContent = gl&&gl[0] ? gl[0] : '—';
+    $('tip-mr').textContent = gl&&gl[4] ? gl[4] : '';
     tip.classList.add('word');
   } else {
     _g.textContent=String.fromCharCode(pCode[pick]); _g.style.direction=''; _g.style.fontSize='';
@@ -1129,13 +1210,119 @@ function doHover(){
   tip.style.left=tx+'px'; tip.style.top=ty+'px';
 }
 dom.addEventListener('pointerleave',()=>tip.classList.remove('on'));
-/* double-click a letter → zoom into it */
+/* double-click a letter → zoom in + open focus card */
 dom.addEventListener('dblclick',e=>{
   mouse.x=(e.clientX/innerWidth)*2-1; mouse.y=-(e.clientY/innerHeight)*2+1;
   ray.setFromCamera(mouse,camera);
   for(const h of ray.intersectObject(points)){ if(sel[h.index]>-0.5){
-    const pa=geom.attributes.position.array,k=h.index; flyTo(pa[k*3],pa[k*3+1],pa[k*3+2],42); break; } }
+    const pa=geom.attributes.position.array,k=h.index; flyTo(pa[k*3],pa[k*3+1],pa[k*3+2],42); openFocus(k); break; } }
 });
+
+/* ===== v1.9 · focus card, root/value highlight, meaning search, POS, tour, share, OBJ ===== */
+const lemmaCount={}; for(let i=0;i<wordLemma.length;i++){const L=wordLemma[i]; if(L)lemmaCount[L]=(lemmaCount[L]||0)+1;}
+let focusK=-1;
+function openFocus(k){
+  focusK=k; const w=WORDS[pWid[k]], gl=GLOSS[w.he], L=wordLemma[pWid[k]];
+  $('fx-g').textContent=w.he;
+  $('fx-x').textContent=gl&&gl[1]?gl[1]:'';
+  $('fx-en').textContent=gl&&gl[0]?gl[0]:'—';
+  $('fx-mr').textContent=gl&&gl[4]?gl[4]:'';
+  $('fx-ref').textContent=BOOKS[pBook[k]].name+' '+pChap[k]+':'+pVerse[k];
+  $('fx-val').textContent=(state.sofit?w.sumSof:w.sum);
+  $('fx-root').textContent = L ? ((gl&&gl[1]?gl[1]:'#'+L)+' · '+(lemmaCount[L]||0)+'×') : '—';
+  $('focus').classList.add('on');
+}
+function highlightLemma(L){ if(!L)return 0; textMask.fill(0); let c=0;
+  for(let k=0;k<N;k++){ if(wordLemma[pWid[k]]===L){textMask[k]=1;c++;} }
+  state.textActive=true; applySelection(); return c; }
+function highlightValue(V){ textMask.fill(0); const arr=state.sofit?pWsumSof:pWsum; let c=0;
+  for(let k=0;k<N;k++){ if(arr[k]===V){textMask[k]=1;c++;} }
+  state.textActive=true; applySelection(); return c; }
+function readerTo(b,c,v){ const V=VERSES.find(x=>x.b===b&&x.c===c&&x.v===v); if(!V)return;
+  const body=$('reader-body'); body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
+  const el=body.querySelector('.rv[data-gi="'+V.gi+'"]'); if(el){el.classList.add('hot'); el.scrollIntoView({block:'center'});} }
+$('fx-close').onclick=()=>$('focus').classList.remove('on');
+$('fx-broot').onclick=()=>{ if(focusK<0)return; highlightLemma(wordLemma[pWid[focusK]]); };
+$('fx-bval').onclick =()=>{ if(focusK<0)return; const w=WORDS[pWid[focusK]]; highlightValue(state.sofit?w.sumSof:w.sum); };
+$('fx-bread').onclick=()=>{ if(focusK<0)return; readerTo(pBook[focusK],pChap[focusK],pVerse[focusK]); };
+$('fx-bclear').onclick=()=>{ clearText(); applySelection(); };
+
+/* search by meaning (English gloss) */
+function searchMeaning(term){ term=(term||'').trim().toLowerCase();
+  if(!term){ clearText(); applySelection(); return -1; }
+  const forms=new Set(); for(const he in GLOSS){ const g=GLOSS[he][0]; if(g&&g.toLowerCase().indexOf(term)>=0) forms.add(he); }
+  textMask.fill(0); let c=0;
+  for(let k=0;k<N;k++){ if(forms.has(WORDS[pWid[k]].he)){textMask[k]=1;c++;} }
+  state.textActive=true; applySelection(); return c; }
+const _mi=$('meaning-in'), _mh=$('meaning-hint');
+_mi.addEventListener('keydown',e=>{ if(e.key!=='Enter')return; e.preventDefault();
+  const c=searchMeaning(_mi.value);
+  _mh.textContent = c<0?'' : (c?('highlighted '+c.toLocaleString('en-US')+' words'):'no matches'); });
+
+/* colour by part of speech */
+function renderPosLegend(){ $('poslegend').innerHTML=POS_ORDER.map(l=>{const c=POS_COL[l];
+  return '<span><i style="background:rgb('+Math.round(c[0]*255)+','+Math.round(c[1]*255)+','+Math.round(c[2]*255)+')"></i>'+POS_LABEL[l]+'</span>';}).join(''); }
+renderPosLegend();
+document.querySelectorAll('#seg-color button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-color button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state.colorBy=b.dataset.cb;
+  $('poslegend').classList.toggle('on', state.colorBy==='pos');
+  if(state.mode!=='meaning'&&state.mode!=='map') recompute(); }));
+
+/* tour speed + fly-by/deep-dive */
+bindRange('s-tspeed','v-tspeed',v=>parseFloat(v).toFixed(1)+'×',v=>{state.tourSpeed=v;});
+document.querySelectorAll('#seg-tour button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#seg-tour button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on'); state.tourMode=b.dataset.t; }));
+
+/* export current geometry as .obj */
+function exportOBJ(){
+  const lines=['# Torah · Topology of Gematria — '+state.mode+' ('+state.gran+')'];
+  if(state.mode==='meaning'||state.mode==='map'){
+    const pa=enrGeom.attributes.position.array, idx=enrGeom.index?enrGeom.index.array:null;
+    for(let i=0;i<pa.length;i+=3) lines.push('v '+pa[i].toFixed(3)+' '+pa[i+1].toFixed(3)+' '+pa[i+2].toFixed(3));
+    if(idx) for(let i=0;i<idx.length;i+=3) lines.push('f '+(idx[i]+1)+' '+(idx[i+1]+1)+' '+(idx[i+2]+1));
+  } else {
+    const pa=geom.attributes.position.array, sA=geom.attributes.aSel.array;
+    for(let k=0;k<N;k++){ if(sA[k]<-0.5) continue; lines.push('v '+pa[k*3].toFixed(2)+' '+pa[k*3+1].toFixed(2)+' '+pa[k*3+2].toFixed(2)); }
+  }
+  const blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='torah-'+state.mode+(state.gran==='word'?'-word':'')+'.obj';
+  document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},120);
+}
+$('btn-obj').addEventListener('click',exportOBJ);
+
+/* shareable deep link */
+function buildHash(){ const s=state, bk=[...s.books].sort((a,b)=>a-b).join('');
+  const p={m:s.mode,l:s.layout,g:s.gran,la:s.layers?1:0,gl:s.glyph?1:0,c:s.curve,f:s.floor,ce:s.ceil,so:s.sofit?1:0,cb:s.colorBy,bk};
+  return Object.entries(p).map(([k,v])=>k+'='+encodeURIComponent(v)).join('&'); }
+function flashShare(msg){ const b=$('btn-share'),o='Share link'; b.textContent=msg; setTimeout(()=>b.textContent=o,1500); }
+$('btn-share').addEventListener('click',()=>{ history.replaceState(null,'','#'+buildHash());
+  if(navigator.clipboard&&navigator.clipboard.writeText)
+    navigator.clipboard.writeText(location.href).then(()=>flashShare('link copied ✓')).catch(()=>flashShare('link in address bar'));
+  else flashShare('link in address bar'); });
+function setSeg(id,attr,val){ const el=$(id); if(!el)return; el.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset[attr]===String(val))); }
+function syncUI(){
+  setSeg('seg-mode','m',state.mode); setSeg('seg-layout','l',state.layout); setSeg('seg-gran','g',state.gran);
+  setSeg('seg-curve','c',state.curve); setSeg('seg-color','cb',state.colorBy);
+  $('seg-render').querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset.r===(state.layers?'layers':(state.glyph?'glyph':'dots'))));
+  $('c-sofit').checked=state.sofit; $('s-floor').value=state.floor; $('s-ceil').value=state.ceil;
+  $('v-floor').textContent=state.floor; $('v-ceil').textContent=state.ceil;
+  material.uniforms.uLayers.value=state.layers?1:0; material.uniforms.uGlyph.value=state.glyph?1:0;
+  $('poslegend').classList.toggle('on', state.colorBy==='pos');
+  document.querySelectorAll('.bchip').forEach(c=>{ const b=+c.dataset.b; c.classList.toggle('on', state.books.has(b)); });
+}
+function applyHash(){ const h=location.hash.slice(1); if(!h) return false;
+  const q={}; h.split('&').forEach(s=>{const i=s.indexOf('='); if(i>0)q[s.slice(0,i)]=decodeURIComponent(s.slice(i+1));});
+  if(q.bk!==undefined&&q.bk!=='') state.books=new Set(q.bk.split('').map(Number).filter(n=>n>=0&&n<=4));
+  if(q.g)state.gran=q.g; if(q.l)state.layout=q.l; if(q.c)state.curve=q.c;
+  if(q.f)state.floor=+q.f; if(q.ce)state.ceil=+q.ce;
+  state.sofit=q.so==='1'; state.layers=q.la==='1'; state.glyph=q.gl==='1'; if(q.cb)state.colorBy=q.cb;
+  syncUI(); buildReader();
+  if(q.m) setMode(q.m); else recompute();
+  return true;
+}
 
 /* ---- resize + render loop ------------------------------------------------- */
 addEventListener('resize',()=>{
@@ -1157,7 +1344,10 @@ function animate(){
 }
 
 /* ---- boot ----------------------------------------------------------------- */
-recompute(); fitPlane(state.mode); fitView(state.mode); animate();
+const _hashed=applyHash();
+if(!_hashed){ recompute(); fitPlane(state.mode); fitView(state.mode); }
+else if(state.mode!=='meaning'&&state.mode!=='map'){ fitPlane(state.mode); fitView(state.mode); }
+animate();
 setTimeout(()=>{ $('loader').classList.add('hide'); $('title').classList.add('in'); },650);
 })();
 </script>
