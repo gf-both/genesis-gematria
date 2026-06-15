@@ -107,6 +107,9 @@
     box-shadow:0 8px 30px rgba(0,0,0,.6);min-width:130px}
   #tip.on{opacity:1}
   #tip .glyph{font-family:var(--serif);font-size:46px;line-height:1;color:var(--gold);text-align:center;margin-bottom:8px}
+  #tip .xlit{display:none;text-align:center;font-style:italic;font-size:11px;color:var(--dim);margin:-4px 0 7px}
+  #tip .en{display:none;text-align:center;font-size:13px;color:var(--ink);margin:0 0 9px;max-width:230px;line-height:1.25}
+  #tip.word .xlit,#tip.word .en{display:block}
   #tip .tr{display:flex;justify-content:space-between;gap:16px;font-size:11px;color:var(--dim);margin:3px 0}
   #tip .tr b{color:var(--ink);font-family:var(--mono);font-variant-numeric:tabular-nums}
   /* ---- reading panel ---- */
@@ -315,6 +318,8 @@
 <div id="hint">drag to orbit · scroll to zoom · right-drag / shift-drag to pan · hover a letter to inspect</div>
 <div id="tip">
   <div class="glyph" id="tip-g"></div>
+  <div class="xlit" id="tip-x"></div>
+  <div class="en" id="tip-en"></div>
   <div class="tr"><span>Reference</span><b id="tip-ref"></b></div>
   <div class="tr"><span>Gematria</span><b id="tip-val"></b></div>
   <div class="tr"><span>On line</span><b id="tip-pos"></b></div>
@@ -324,6 +329,7 @@
 <script src="three.min.js"></script>
 <script src="torah_data.js"></script>
 <script src="torah_en.js"></script>
+<script src="torah_gloss.js"></script>
 <script>
 /* ============================================================================
    Genesis · Topology of Gematria
@@ -335,6 +341,7 @@
 const REDUCED = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
 const BOOKS = window.TORAH;            // [{id,name,he,chapters:[[[w..]..]..]}]
 const EN = window.TORAH_EN || [];      // [book][chapter][verse] English
+const GLOSS = window.TORAH_GLOSS || {}; // consonantal word -> [english gloss, transliteration]
 const BOOK_TINT = [[0.89,0.70,0.24],[0.12,0.56,0.56],[0.32,0.69,0.41],[0.90,0.48,0.17],[0.62,0.50,0.85]];
 
 /* ---- gematria (Mispar Hechrachi) + optional sofit (Mispar Gadol) ---------- */
@@ -1103,9 +1110,14 @@ function doHover(){
     _g.textContent=w.he; _g.style.direction='rtl';
     _g.style.fontSize=(w.he.length>5?'24px':w.he.length>3?'32px':'40px');
     $('tip-val').textContent=(state.sofit?w.sumSof:w.sum);
+    const gl=GLOSS[w.he];
+    $('tip-x').textContent = gl&&gl[1] ? gl[1] : '';
+    $('tip-en').textContent = gl&&gl[0] ? gl[0] : '—';
+    tip.classList.add('word');
   } else {
     _g.textContent=String.fromCharCode(pCode[pick]); _g.style.direction=''; _g.style.fontSize='';
     $('tip-val').textContent=(state.sofit?gemSof[pick]:gemStd[pick]);
+    tip.classList.remove('word');
   }
   $('tip-ref').textContent=BOOKS[pBook[pick]].name+' '+pChap[pick]+':'+pVerse[pick];
   $('tip-pos').textContent=pCol[pick]+' / '+pLineLen[pick];
