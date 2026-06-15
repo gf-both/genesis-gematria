@@ -420,6 +420,7 @@
    ========================================================================== */
 (function(){
 "use strict";
+let THEME=(function(){try{return localStorage.getItem('ttp_theme')||'dark';}catch(e){return 'dark';}})();
 const REDUCED = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
 const BOOKS = window.TORAH;            // [{id,name,he,chapters:[[[w..]..]..]}]
 const EN = window.TORAH_EN || [];      // [book][chapter][verse] English
@@ -533,7 +534,6 @@ const letterOn=new Uint8Array(22); let letterCount=0;
 
 /* ---- three.js scene ------------------------------------------------------- */
 const BG_DARK=0x06070d, BG_LIGHT=0xece6d8;   /* observatory dark · parchment light */
-let THEME=(function(){try{return localStorage.getItem('ttp_theme')||'dark';}catch(e){return 'dark';}})();
 const BG = THEME==='light'?BG_LIGHT:BG_DARK;
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(BG,0.00085);
