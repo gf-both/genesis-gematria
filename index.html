@@ -963,39 +963,58 @@ function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.at
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
-/* word-as-text: in word granularity + "Letters" render, the per-point glyphs become dots and the
-   full Hebrew WORD is drawn in their place (no letters underneath, no labels stacked over dots) */
-const WLMAX=240; let wlX=[],wlY=[],wlZ=[],wlHe=[], wlPool=[], wlVisible=false, wlFrame=0, wlBox=null;
-(function(){ wlBox=document.createElement('div'); wlBox.id='wordlabels'; document.body.appendChild(wlBox);
-  for(let i=0;i<WLMAX;i++){ const el=document.createElement('div'); el.className='wlab'; el.style.display='none'; wlBox.appendChild(el); wlPool.push(el);} })();
-const _wlv=new THREE.Vector3();
-function updateWordLabels(){
+/* ===== word-as-text: in word granularity + "Letters" render, each word-point becomes the full
+   Hebrew WORD — drawn from a GPU texture atlas as a billboarded quad. Same idea as the letter glyph
+   atlas, but whole words, all rendered in one instanced draw call (no DOM, no labels-beside-dots). ===== */
+let wlX=[],wlY=[],wlZ=[],wlHe=[], wlFrame=0;     // per-word position + form (filled by recompute, word mode)
+const WORD_RECT={}; let wordAtlasTex=null;
+(function buildWordAtlas(){
+  const seen=new Set(); for(const w of WORDS) seen.add(w.he); const forms=[...seen];
+  const FH=26, PAD=7, AW=4096, FONT='700 19px "Times New Roman", Georgia, serif';
+  let mc=document.createElement('canvas').getContext('2d'); mc.font=FONT;
+  let x=0,y=0; const place=[];
+  for(const f of forms){ const w=Math.ceil(mc.measureText(f).width)+PAD*2;
+    if(x+w>AW){ x=0; y+=FH; } place.push([f,x,y,w]); x+=w; }
+  const AH=Math.min(8192, y+FH);
+  const cv=document.createElement('canvas'); cv.width=AW; cv.height=AH;
+  const g=cv.getContext('2d'); g.font=FONT; g.fillStyle='#fff'; g.textBaseline='middle'; g.textAlign='center';
+  try{ g.direction='rtl'; }catch(e){}
+  for(const [f,px,py,w] of place){ g.fillText(f, px+w/2, py+FH/2); WORD_RECT[f]=[px/AW,py/AH,w/AW,FH/AH, w/FH]; }
+  wordAtlasTex=new THREE.CanvasTexture(cv); wordAtlasTex.minFilter=THREE.LinearFilter; wordAtlasTex.magFilter=THREE.LinearFilter;
+})();
+let wordMesh=null, wordGeom=null;
+(function buildWordMesh(){
+  wordGeom=new THREE.InstancedBufferGeometry();
+  const quad=new Float32Array([-0.5,-0.5, 0.5,-0.5, 0.5,0.5, -0.5,-0.5, 0.5,0.5, -0.5,0.5]);
+  wordGeom.setAttribute('quad',new THREE.BufferAttribute(quad,2));
+  const mat=new THREE.ShaderMaterial({ transparent:true, depthTest:true, depthWrite:false, toneMapped:false,
+    uniforms:{ uAtlas:{value:wordAtlasTex}, uPx:{value:0.05}, uColor:{value:new THREE.Color(0xffffff)} },
+    vertexShader:`attribute vec2 quad; attribute vec3 iPos; attribute vec4 iUV; attribute float iAspect;
+      uniform float uPx; varying vec2 vUv;
+      void main(){ vec4 mv=modelViewMatrix*vec4(iPos,1.0); float h=uPx*(-mv.z);
+        mv.xy += quad*vec2(h*iAspect, h); gl_Position=projectionMatrix*mv;
+        vUv=iUV.xy + (quad+0.5)*iUV.zw; }`,
+    fragmentShader:`uniform sampler2D uAtlas; uniform vec3 uColor; varying vec2 vUv;
+      void main(){ float a=texture2D(uAtlas,vUv).a; if(a<0.28) discard; gl_FragColor=vec4(uColor,a); }`});
+  wordMesh=new THREE.Mesh(wordGeom,mat); wordMesh.frustumCulled=false; wordMesh.visible=false; wordMesh.renderOrder=4;
+  scene.add(wordMesh);
+})();
+function rebuildWordMesh(){
+  if(!wordMesh) return; const n=wlX.length; if(!n){ wordMesh.visible=false; return; }
+  const iPos=new Float32Array(n*3), iUV=new Float32Array(n*4), iAsp=new Float32Array(n);
+  for(let i=0;i<n;i++){ iPos[i*3]=wlX[i];iPos[i*3+1]=wlY[i];iPos[i*3+2]=wlZ[i];
+    const r=WORD_RECT[wlHe[i]]||[0,0,0,0,1]; iUV[i*4]=r[0];iUV[i*4+1]=r[1];iUV[i*4+2]=r[2];iUV[i*4+3]=r[3]; iAsp[i]=r[4]; }
+  wordGeom.setAttribute('iPos',new THREE.InstancedBufferAttribute(iPos,3));
+  wordGeom.setAttribute('iUV',new THREE.InstancedBufferAttribute(iUV,4));
+  wordGeom.setAttribute('iAspect',new THREE.InstancedBufferAttribute(iAsp,1));
+  wordGeom.instanceCount=n;
+}
+function updateWordLabels(){   /* toggles word billboards vs the point cloud */
   const meshMode=(state.mode==='meaning'||state.mode==='map');
   const wordText=(state.gran==='word') && state.glyph && !meshMode && wlX.length>0;
-  /* when showing words, render the underlying points as plain dots (glyph off) so no letters show through */
-  if(material&&material.uniforms.uGlyph){ const want=wordText?0:(state.glyph?1:0);
-    if(material.uniforms.uGlyph.value!==want) material.uniforms.uGlyph.value=want; }
-  if(!wordText){ if(wlVisible){ for(const e of wlPool) e.style.display='none'; wlVisible=false; } return; }
-  wlVisible=true;
-  /* rank by distance to the look-at point (target), not the camera — words sit ~sph.r away from the eye */
-  const tx=target.x,ty=target.y,tz=target.z, R=Math.max(120,sph.r*0.85), R2=R*R, cand=[];
-  for(let i=0;i<wlX.length;i++){ const dx=wlX[i]-tx,dy=wlY[i]-ty,dz=wlZ[i]-tz, d2=dx*dx+dy*dy+dz*dz;
-    if(d2<R2) cand.push([d2,i]); }
-  cand.sort((a,b)=>a[0]-b[0]);
-  /* greedy screen-space de-clutter: show nearest words first, skip any that would overlap an already-placed label */
-  const placedX=[], placedY=[]; let shown=0;
-  const maxCheck=Math.min(cand.length, 1800);
-  for(let p=0; p<maxCheck && shown<WLMAX; p++){
-    const i=cand[p][1]; _wlv.set(wlX[i],wlY[i],wlZ[i]).project(camera);
-    if(_wlv.z>1 || _wlv.x<-1.05 || _wlv.x>1.05 || _wlv.y<-1.05 || _wlv.y>1.05) continue;
-    const sx=(_wlv.x*0.5+0.5)*innerWidth, sy=(-_wlv.y*0.5+0.5)*innerHeight;
-    let ok=true; for(let q=0;q<placedX.length;q++){ if(Math.abs(placedX[q]-sx)<58 && Math.abs(placedY[q]-sy)<17){ok=false;break;} }
-    if(!ok) continue;
-    const el=wlPool[shown++]; el.textContent=wlHe[i];
-    el.style.left=sx+'px'; el.style.top=sy+'px'; el.style.opacity=String(Math.max(0.4,1-cand[p][0]/R2)); el.style.display='block';
-    placedX.push(sx); placedY.push(sy);
-  }
-  for(let p=shown;p<wlPool.length;p++) wlPool[p].style.display='none';
+  if(wordMesh){ wordMesh.visible=wordText;
+    const lt=document.body.classList.contains('light'); wordMesh.material.uniforms.uColor.value.setHex(lt?0x2a1908:0xffffff); }
+  if(!meshMode) points.visible=!wordText;
 }
 let enrPeaks=[];
 const _lv=new THREE.Vector3();
@@ -1134,6 +1153,7 @@ function recompute(){
   geom.computeBoundingSphere(); geom.computeBoundingBox();
   applySelection();
   drawLegend();
+  if(typeof rebuildWordMesh==='function'){ rebuildWordMesh(); updateWordLabels(); }
 }
 
 /* selection / isolation + live stats */
