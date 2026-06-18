@@ -975,17 +975,20 @@ function updateWordLabels(){
   for(let i=0;i<wlX.length;i++){ const dx=wlX[i]-tx,dy=wlY[i]-ty,dz=wlZ[i]-tz, d2=dx*dx+dy*dy+dz*dz;
     if(d2<R2) cand.push([d2,i]); }
   cand.sort((a,b)=>a[0]-b[0]);
-  const n=Math.min(WLMAX,cand.length);
-  for(let p=0;p<wlPool.length;p++){ const el=wlPool[p];
-    if(p>=n){ el.style.display='none'; continue; }
+  /* greedy screen-space de-clutter: show nearest words first, skip any that would overlap an already-placed label */
+  const placedX=[], placedY=[]; let shown=0;
+  const maxCheck=Math.min(cand.length, 1800);
+  for(let p=0; p<maxCheck && shown<WLMAX; p++){
     const i=cand[p][1]; _wlv.set(wlX[i],wlY[i],wlZ[i]).project(camera);
-    if(_wlv.z>1){ el.style.display='none'; continue; }
-    el.textContent=wlHe[i];
-    el.style.left=((_wlv.x*0.5+0.5)*innerWidth)+'px';
-    el.style.top=((-_wlv.y*0.5+0.5)*innerHeight)+'px';
-    el.style.opacity=String(Math.max(0.35,1-cand[p][0]/R2));
-    el.style.display='block';
+    if(_wlv.z>1 || _wlv.x<-1.05 || _wlv.x>1.05 || _wlv.y<-1.05 || _wlv.y>1.05) continue;
+    const sx=(_wlv.x*0.5+0.5)*innerWidth, sy=(-_wlv.y*0.5+0.5)*innerHeight;
+    let ok=true; for(let q=0;q<placedX.length;q++){ if(Math.abs(placedX[q]-sx)<58 && Math.abs(placedY[q]-sy)<17){ok=false;break;} }
+    if(!ok) continue;
+    const el=wlPool[shown++]; el.textContent=wlHe[i];
+    el.style.left=sx+'px'; el.style.top=sy+'px'; el.style.opacity=String(Math.max(0.4,1-cand[p][0]/R2)); el.style.display='block';
+    placedX.push(sx); placedY.push(sy);
   }
+  for(let p=shown;p<wlPool.length;p++) wlPool[p].style.display='none';
 }
 let enrPeaks=[];
 const _lv=new THREE.Vector3();
