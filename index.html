@@ -963,60 +963,6 @@ function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.at
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
-/* ===== word-as-text: in word granularity + "Letters" render, each word-point becomes the full
-   Hebrew WORD — drawn from a GPU texture atlas as a billboarded quad. Same idea as the letter glyph
-   atlas, but whole words, all rendered in one instanced draw call (no DOM, no labels-beside-dots). ===== */
-let wlX=[],wlY=[],wlZ=[],wlHe=[], wlFrame=0;     // per-word position + form (filled by recompute, word mode)
-const WORD_RECT={}; let wordAtlasTex=null;
-(function buildWordAtlas(){
-  const seen=new Set(); for(const w of WORDS) seen.add(w.he); const forms=[...seen];
-  const FH=26, PAD=7, AW=4096, FONT='700 19px "Times New Roman", Georgia, serif';
-  let mc=document.createElement('canvas').getContext('2d'); mc.font=FONT;
-  let x=0,y=0; const place=[];
-  for(const f of forms){ const w=Math.ceil(mc.measureText(f).width)+PAD*2;
-    if(x+w>AW){ x=0; y+=FH; } place.push([f,x,y,w]); x+=w; }
-  const AH=Math.min(8192, y+FH);
-  const cv=document.createElement('canvas'); cv.width=AW; cv.height=AH;
-  const g=cv.getContext('2d'); g.font=FONT; g.fillStyle='#fff'; g.textBaseline='middle'; g.textAlign='center';
-  try{ g.direction='rtl'; }catch(e){}
-  for(const [f,px,py,w] of place){ g.fillText(f, px+w/2, py+FH/2); WORD_RECT[f]=[px/AW,py/AH,w/AW,FH/AH, w/FH]; }
-  wordAtlasTex=new THREE.CanvasTexture(cv); wordAtlasTex.minFilter=THREE.LinearFilter; wordAtlasTex.magFilter=THREE.LinearFilter;
-})();
-let wordMesh=null, wordGeom=null, wordScene=null;
-(function buildWordMesh(){
-  wordGeom=new THREE.InstancedBufferGeometry();
-  /* a unit quad as the 'position' attribute (z=0) — renderer needs 'position' to count vertices */
-  const quad=new Float32Array([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0]);
-  wordGeom.setAttribute('position',new THREE.BufferAttribute(quad,3));
-  const mat=new THREE.ShaderMaterial({ transparent:false, depthTest:true, depthWrite:true, toneMapped:true,
-    uniforms:{ uAtlas:{value:wordAtlasTex}, uPx:{value:0.026}, uColor:{value:new THREE.Color(0xffffff)} },
-    vertexShader:`attribute vec3 iPos; attribute vec4 iUV; attribute float iAspect;
-      uniform float uPx; varying vec2 vUv;
-      void main(){ vec4 mv=modelViewMatrix*vec4(iPos,1.0); float h=uPx*(-mv.z);
-        mv.xy += position.xy*vec2(h*iAspect, h); gl_Position=projectionMatrix*mv;
-        vUv=iUV.xy + (position.xy+0.5)*iUV.zw; }`,
-    fragmentShader:`uniform sampler2D uAtlas; uniform vec3 uColor; varying vec2 vUv;
-      void main(){ float a=texture2D(uAtlas,vUv).a; if(a<0.45) discard; gl_FragColor=vec4(uColor,1.0); }`});
-  wordMesh=new THREE.Mesh(wordGeom,mat); wordMesh.frustumCulled=false; wordMesh.visible=false;
-  wordScene=new THREE.Scene(); wordScene.add(wordMesh);   /* rendered as a crisp overlay AFTER bloom */
-})();
-function rebuildWordMesh(){
-  if(!wordMesh) return; const n=wlX.length; if(!n){ wordMesh.visible=false; return; }
-  const iPos=new Float32Array(n*3), iUV=new Float32Array(n*4), iAsp=new Float32Array(n);
-  for(let i=0;i<n;i++){ iPos[i*3]=wlX[i];iPos[i*3+1]=wlY[i];iPos[i*3+2]=wlZ[i];
-    const r=WORD_RECT[wlHe[i]]||[0,0,0,0,1]; iUV[i*4]=r[0];iUV[i*4+1]=r[1];iUV[i*4+2]=r[2];iUV[i*4+3]=r[3]; iAsp[i]=r[4]; }
-  wordGeom.setAttribute('iPos',new THREE.InstancedBufferAttribute(iPos,3));
-  wordGeom.setAttribute('iUV',new THREE.InstancedBufferAttribute(iUV,4));
-  wordGeom.setAttribute('iAspect',new THREE.InstancedBufferAttribute(iAsp,1));
-  wordGeom.instanceCount=n;
-}
-function updateWordLabels(){   /* toggles word billboards vs the point cloud */
-  const meshMode=(state.mode==='meaning'||state.mode==='map');
-  const wordText=(state.gran==='word') && state.glyph && !meshMode && wlX.length>0;
-  if(wordMesh){ wordMesh.visible=wordText;
-    const lt=document.body.classList.contains('light'); wordMesh.material.uniforms.uColor.value.setHex(lt?0x2a1908:0xffffff); }
-  if(!meshMode) points.visible=!wordText;
-}
 let enrPeaks=[];
 const _lv=new THREE.Vector3();
 function repWord(gch,bin){               // most frequent word in chapter that lands in this bin
@@ -1095,17 +1041,12 @@ function recompute(){
   for(let bb=0;bb<BOOKS.length;bb++){ fixedScrX[bb]=accAll; accAll+=(Math.ceil(BK[bb].letters/perCol)+1)*(SCROLL_W+SCROLL_COLGAP); }
   const totalLet=accLet||1, GA=Math.PI*(3-Math.sqrt(5));
   const SPIR_DA=Math.PI*2*110/totalLet, SPIR_R=150, SPIR_H=1700;  /* coil: 110 turns */
-  const wordMode=(state.gran==='word');
-  const SPIR_DAW=Math.PI*2*110/totalWord;
-  let lastWid=-1, lpx=0,lpy=0,lpz=0, lcr=0,lcg=0,lcb=0;
-  if(wordMode){ wlX=[]; wlY=[]; wlZ=[]; wlHe=[]; } else { wlX=[]; wlY=[]; wlZ=[]; wlHe=[]; }
   for(let k=0;k<N;k++){
     const b=pBook[k];
     if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
-    /* word view: collapse every letter of a word onto a single point */
-    if(wordMode && pWid[k]===lastWid){ posA.array[k*3]=lpx;posA.array[k*3+1]=lpy;posA.array[k*3+2]=lpz;
-      colA.array[k*3]=lcr;colA.array[k*3+1]=lcg;colA.array[k*3+2]=lcb; continue; }
     let nv;
+    /* "Per word" only changes the gematria VALUE source — letters stay in their reading positions,
+       so the glyph/Letters view still spells out the actual words. */
     if(state.gran==='word'){ nv=(state.sofit?pWsumSof[k]:pWsum[k])/(state.sofit?MAXWsof:MAXW); }
     else { const g=state.sofit?gemSof[k]:gemStd[k]; nv=(g-lo)/span; }
     if(nv<0)nv=0; else if(nv>1)nv=1;
@@ -1114,27 +1055,19 @@ function recompute(){
     const h = hv*HEIGHT_MAX*state.exag;
     let X,Y,Z;
     if(m==='spiral'){
-      const s=wordMode ? (wordBase[b]+bookWord[k]) : (str?(letBase[b]+bookLetter[k]):bookLetter[k]);
-      const tot=wordMode?totalWord:totalLet, da=wordMode?SPIR_DAW:SPIR_DA;
-      const ang=s*da, R=SPIR_R+h*1.4;
-      X=Math.cos(ang)*R; Y=(s/tot-0.5)*SPIR_H; Z=Math.sin(ang)*R;
+      const s=str?(letBase[b]+bookLetter[k]):bookLetter[k];
+      const ang=s*SPIR_DA, R=SPIR_R+h*1.4;
+      X=Math.cos(ang)*R; Y=(s/totalLet-0.5)*SPIR_H; Z=Math.sin(ang)*R;
     } else if(m==='sphere'){
-      const s=wordMode ? (wordBase[b]+bookWord[k]) : (letBase[b]+bookLetter[k]);
-      const tot=wordMode?totalWord:totalLet;
-      const yy=1-2*((s+0.5)/tot), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
+      const s=letBase[b]+bookLetter[k];
+      const yy=1-2*((s+0.5)/totalLet), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
       X=Math.cos(ph)*rr*R; Y=yy*R; Z=Math.sin(ph)*rr*R;
     } else if(m==='scroll'){
-      if(wordMode){   /* wrap by WORD sequence → one dot per word */
-        const sW=wordBase[b]+bookWord[k], wPerCol=SCROLL_W*SCROLL_H;
-        const K=Math.floor(sW/wPerCol), rem=sW%wPerCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
-        X=-cc-K*(SCROLL_W+SCROLL_COLGAP); Y=-l; Z=h;
-      } else {
-        const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
-        const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
-        const xoff = str ? 0 : fixedScrX[b];
-        X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
-      }
-    } else {   /* terrain: verse lines; word mode keeps one dot per word along each line */
+      const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
+      const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
+      const xoff = str ? 0 : fixedScrX[b];
+      X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
+    } else {
       if(str){ X=-xInLine[k]; Y=-(lineBase[b]+bookLine[k]); }
       else { X=-xInLine[k]-b*terGapFixed; Y=-bookLine[k]; }
       Z=h;
@@ -1147,14 +1080,11 @@ function recompute(){
       const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
       colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
     }
-    if(wordMode){ lastWid=pWid[k]; lpx=X;lpy=Y;lpz=Z; lcr=colA.array[k*3];lcg=colA.array[k*3+1];lcb=colA.array[k*3+2];
-      wlX.push(X); wlY.push(Y); wlZ.push(Z); wlHe.push(WORDS[pWid[k]].he); }
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
   geom.computeBoundingSphere(); geom.computeBoundingBox();
   applySelection();
   drawLegend();
-  if(typeof rebuildWordMesh==='function'){ rebuildWordMesh(); updateWordLabels(); }
 }
 
 /* selection / isolation + live stats */
@@ -1970,14 +1900,10 @@ function animate(){
   else if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
   updateLabels();
-  if((wlFrame=(wlFrame+1)%4)===0) updateWordLabels();
   if(bokehPass&&bokehPass.enabled&&bokehPass.uniforms&&bokehPass.uniforms.focus){
     bokehPass.uniforms.focus.value=Math.max(10,camera.position.distanceTo(target)); }
   bgMesh.position.copy(camera.position); bgU.uTime.value=u.uTime.value;
   if(composer) composer.render(); else renderer.render(scene,camera);
-  /* crisp word overlay (no bloom) — drawn on top of the composited frame */
-  if(wordMesh&&wordMesh.visible&&wordScene){ renderer.autoClear=false; renderer.clearDepth();
-    renderer.render(wordScene,camera); renderer.autoClear=true; }
 }
 
 /* ===== v2.0 · draggable, persistent panels ===== */
