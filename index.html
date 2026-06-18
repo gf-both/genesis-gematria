@@ -437,6 +437,31 @@
 
 <div id="ctrl" class="panel">
   <div class="grp">
+    <span class="lbl">Render</span>
+    <div class="seg" id="seg-render">
+      <button data-r="dots" class="on">Dots</button>
+      <button data-r="layers">Layers</button>
+      <button data-r="glyph">Letters</button>
+    </div>
+    <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">3.6</span></div>
+    <input type="range" id="s-size" min="0.5" max="9" step="0.1" value="3.6">
+    <div class="row" style="margin-top:11px;margin-bottom:4px"><span>Colour by</span></div>
+    <div class="seg" id="seg-color">
+      <button data-cb="gem" class="on">Gematria</button>
+      <button data-cb="pos">Part of speech</button>
+    </div>
+    <div id="poslegend"></div>
+  </div>
+
+  <div class="grp">
+    <span class="lbl">Value from</span>
+    <div class="seg" id="seg-gran">
+      <button data-g="letter" class="on">Per letter</button>
+      <button data-g="word">Per word</button>
+    </div>
+  </div>
+
+  <div class="grp">
     <span class="lbl">Height scale</span>
     <div class="row"><span>Exaggerate</span><span class="val" id="v-exag">1.00×</span></div>
     <input type="range" id="s-exag" min="0" max="3" step="0.05" value="1">
@@ -446,11 +471,6 @@
       <button data-c="sqrt" class="on">√</button>
       <button data-c="sq">x²</button>
       <button data-c="log">Log</button>
-    </div>
-    <div class="row" style="margin-top:9px;margin-bottom:4px"><span>Value from</span></div>
-    <div class="seg" id="seg-gran">
-      <button data-g="letter" class="on">Per letter</button>
-      <button data-g="word">Per word</button>
     </div>
   </div>
 
@@ -468,23 +488,6 @@
     </div>
     <label class="toggle" style="margin-top:11px">
       <input type="checkbox" id="c-sofit"><span class="tk"></span>Final-letter values (sofit → 900)</label>
-  </div>
-
-  <div class="grp">
-    <span class="lbl">Render</span>
-    <div class="seg" id="seg-render">
-      <button data-r="dots" class="on">Dots</button>
-      <button data-r="layers">Layers</button>
-      <button data-r="glyph">Letters</button>
-    </div>
-    <div class="row" style="margin-top:9px"><span>Point size</span><span class="val" id="v-size">3.6</span></div>
-    <input type="range" id="s-size" min="0.5" max="9" step="0.1" value="3.6">
-    <div class="row" style="margin-top:11px;margin-bottom:4px"><span>Colour by</span></div>
-    <div class="seg" id="seg-color">
-      <button data-cb="gem" class="on">Gematria</button>
-      <button data-cb="pos">Part of speech</button>
-    </div>
-    <div id="poslegend"></div>
   </div>
 
   <div class="grp">
@@ -683,6 +686,9 @@ const VERSES=[];
 })();
 let MAXW=1, MAXWsof=1;
 for(let k=0;k<N;k++){ if(pWsum[k]>MAXW)MAXW=pWsum[k]; if(pWsumSof[k]>MAXWsof)MAXWsof=pWsumSof[k]; }
+/* reading-order coordinate WITH a gap between words (so spiral/sphere group letters into legible words) */
+const readCoord=new Float32Array(N); let readTotal=1;
+(function(){ let pos=0,lastWid=-1; for(let k=0;k<N;k++){ if(pWid[k]!==lastWid){ if(lastWid!==-1)pos+=2.4; lastWid=pWid[k]; } readCoord[k]=pos; pos+=1; } readTotal=pos||1; })();
 const textMask=new Uint8Array(N);   // 1 = letter is in current text selection
 
 /* ---- v1.9 · per-word lexical data (root + part of speech) ----------------- */
@@ -1195,9 +1201,10 @@ function recompute(){
     const h = hv*HEIGHT_MAX*state.exag;
     let X,Y,Z;
     if(m==='spiral'){
-      const s=str?(letBase[b]+bookLetter[k]):bookLetter[k];
-      const ang=s*SPIR_DA, R=SPIR_R+h*1.4;
-      X=Math.cos(ang)*R; Y=(s/totalLet-0.5)*SPIR_H; Z=Math.sin(ang)*R;
+      /* wind letters in reading order WITH word gaps, on a roomy coil so words stay legible */
+      const TURNS=240, s=readCoord[k];
+      const ang=s*(Math.PI*2*TURNS/readTotal), R=Math.max(150, readTotal/(Math.PI*2*TURNS))+h*1.4;
+      X=Math.cos(ang)*R; Y=(s/readTotal-0.5)*SPIR_H*1.5; Z=Math.sin(ang)*R;
     } else if(m==='sphere'){
       const s=letBase[b]+bookLetter[k];
       const yy=1-2*((s+0.5)/totalLet), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
