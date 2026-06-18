@@ -285,8 +285,10 @@
     padding:7px 9px;border-radius:9px 9px 0 0;background:rgba(255,255,255,.03);user-select:none}
   .sb-dh>span:first-child{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold,#e3b23c);opacity:.85}
   .sb-dh .dh-c{opacity:.7;font-size:14px}
-  #reader{left:344px;top:14px;bottom:auto;max-height:calc(100vh - 28px)}
-  #focus{left:344px;bottom:auto;top:60px}
+  #reader{left:auto;right:0;top:0;bottom:0;width:360px;max-width:46vw;max-height:none;
+    border-left:1px solid var(--panelbrd);border-right:none;border-radius:0}
+  #reader.hidden{transform:translateX(115%)}
+  #focus{left:auto;right:374px;bottom:auto;top:60px}
   #wordlabels{position:fixed;inset:0;pointer-events:none;z-index:5}
   .wlab{position:absolute;transform:translate(-50%,-50%);font-family:var(--serif,'Georgia',serif);
     font-size:15px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.7);white-space:nowrap;direction:rtl}
@@ -961,14 +963,19 @@ function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.at
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
-/* readable word-text labels (word mode): a small DOM pool showing the nearest words */
-const WLMAX=150; let wlX=[],wlY=[],wlZ=[],wlHe=[], wlPool=[], wlVisible=false, wlFrame=0, wlBox=null;
+/* word-as-text: in word granularity + "Letters" render, the per-point glyphs become dots and the
+   full Hebrew WORD is drawn in their place (no letters underneath, no labels stacked over dots) */
+const WLMAX=240; let wlX=[],wlY=[],wlZ=[],wlHe=[], wlPool=[], wlVisible=false, wlFrame=0, wlBox=null;
 (function(){ wlBox=document.createElement('div'); wlBox.id='wordlabels'; document.body.appendChild(wlBox);
   for(let i=0;i<WLMAX;i++){ const el=document.createElement('div'); el.className='wlab'; el.style.display='none'; wlBox.appendChild(el); wlPool.push(el);} })();
 const _wlv=new THREE.Vector3();
 function updateWordLabels(){
-  const show=(state.gran==='word') && points.visible && wlX.length>0;
-  if(!show){ if(wlVisible){ for(const e of wlPool) e.style.display='none'; wlVisible=false; } return; }
+  const meshMode=(state.mode==='meaning'||state.mode==='map');
+  const wordText=(state.gran==='word') && state.glyph && !meshMode && wlX.length>0;
+  /* when showing words, render the underlying points as plain dots (glyph off) so no letters show through */
+  if(material&&material.uniforms.uGlyph){ const want=wordText?0:(state.glyph?1:0);
+    if(material.uniforms.uGlyph.value!==want) material.uniforms.uGlyph.value=want; }
+  if(!wordText){ if(wlVisible){ for(const e of wlPool) e.style.display='none'; wlVisible=false; } return; }
   wlVisible=true;
   /* rank by distance to the look-at point (target), not the camera — words sit ~sph.r away from the eye */
   const tx=target.x,ty=target.y,tz=target.z, R=Math.max(120,sph.r*0.85), R2=R*R, cand=[];
@@ -2041,10 +2048,10 @@ function setupPanels(){
     tg.textContent=closed?'›':'‹'; });
   /* Torah text reader = floating popup, opened from the sidebar */
   makeDraggable('reader','Text'); makeDraggable('focus','Word');
-  const rd=$('reader'); if(rd) rd.classList.add('hidden');
-  const tb=$('sb-textbtn');
-  if(tb&&rd) tb.addEventListener('click',()=>{ const show=rd.classList.contains('hidden');
-    rd.classList.toggle('hidden',!show); tb.classList.toggle('on',show); });
+  const rd=$('reader'); const tb=$('sb-textbtn');
+  if(tb&&rd){ tb.classList.add('on');   /* text panel docked on the right, shown by default */
+    tb.addEventListener('click',()=>{ const show=rd.classList.contains('hidden');
+      rd.classList.toggle('hidden',!show); tb.classList.toggle('on',show); }); }
 }
 
 /* ---- boot ----------------------------------------------------------------- */
