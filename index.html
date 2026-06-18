@@ -261,6 +261,36 @@
     #search{left:8px;right:8px;width:auto;max-width:none;transform:none;top:8px}
     #reader{left:8px;right:8px;width:auto;max-width:none;top:150px;bottom:auto;max-height:38vh}
   }
+  /* ===== v3.3 · docked sidebar UX ===== */
+  #sidebar{position:fixed;left:0;top:0;bottom:0;width:322px;z-index:40;overflow-y:auto;overflow-x:hidden;
+    background:rgba(7,8,12,.9);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+    border-right:1px solid var(--panelbrd);padding:6px 8px 48px;display:flex;flex-direction:column;gap:7px;
+    transition:transform .26s cubic-bezier(.4,0,.2,1)}
+  #sidebar.closed{transform:translateX(-100%)}
+  #sidebar::-webkit-scrollbar{width:9px}
+  #sidebar::-webkit-scrollbar-thumb{background:rgba(227,178,60,.28);border-radius:8px}
+  #sidebar .panel{position:static!important;left:auto!important;top:auto!important;right:auto!important;
+    bottom:auto!important;transform:none!important;width:auto!important;max-width:none!important;
+    margin:0;box-shadow:none;border-radius:11px}
+  #sb-head{display:flex;align-items:center;gap:8px;padding:6px 6px 8px;border-bottom:1px solid var(--panelbrd);margin-bottom:2px}
+  #sb-head .sbt{font-family:var(--serif,'Georgia',serif);font-size:14px;color:var(--gold,#e3b23c);letter-spacing:.04em;flex:1}
+  #sb-textbtn{cursor:pointer;font-size:11px;padding:5px 9px;border-radius:7px;border:1px solid var(--panelbrd);
+    background:rgba(255,255,255,.05);color:var(--ink)}
+  #sb-textbtn.on{background:rgba(227,178,60,.25);border-color:rgba(227,178,60,.5)}
+  #sb-toggle{position:fixed;left:330px;top:12px;z-index:42;cursor:pointer;width:34px;height:34px;border-radius:9px;
+    border:1px solid var(--panelbrd);background:rgba(10,12,18,.85);backdrop-filter:blur(8px);color:var(--gold,#e3b23c);
+    font-size:17px;line-height:32px;text-align:center;transition:left .26s cubic-bezier(.4,0,.2,1)}
+  #sb-toggle.closed{left:10px}
+  .sb-dh{cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+    padding:7px 9px;border-radius:9px 9px 0 0;background:rgba(255,255,255,.03);user-select:none}
+  .sb-dh>span:first-child{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--gold,#e3b23c);opacity:.85}
+  .sb-dh .dh-c{opacity:.7;font-size:14px}
+  #reader{left:344px;top:14px;bottom:auto;max-height:calc(100vh - 28px)}
+  #focus{left:344px;bottom:auto;top:60px}
+  #wordlabels{position:fixed;inset:0;pointer-events:none;z-index:5}
+  .wlab{position:absolute;transform:translate(-50%,-50%);font-family:var(--serif,'Georgia',serif);
+    font-size:15px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.7);white-space:nowrap;direction:rtl}
+  body.light .wlab{color:#3a2410;text-shadow:0 1px 6px rgba(255,255,255,.95)}
 </style>
 </head>
 <body>
@@ -931,6 +961,31 @@ function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.at
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
+/* readable word-text labels (word mode): a small DOM pool showing the nearest words */
+const WLMAX=150; let wlX=[],wlY=[],wlZ=[],wlHe=[], wlPool=[], wlVisible=false, wlFrame=0, wlBox=null;
+(function(){ wlBox=document.createElement('div'); wlBox.id='wordlabels'; document.body.appendChild(wlBox);
+  for(let i=0;i<WLMAX;i++){ const el=document.createElement('div'); el.className='wlab'; el.style.display='none'; wlBox.appendChild(el); wlPool.push(el);} })();
+const _wlv=new THREE.Vector3();
+function updateWordLabels(){
+  const show=(state.gran==='word') && points.visible && wlX.length>0;
+  if(!show){ if(wlVisible){ for(const e of wlPool) e.style.display='none'; wlVisible=false; } return; }
+  wlVisible=true;
+  const cam=camera.position, R=Math.max(260,sph.r*0.9), R2=R*R, cand=[];
+  for(let i=0;i<wlX.length;i++){ const dx=wlX[i]-cam.x,dy=wlY[i]-cam.y,dz=wlZ[i]-cam.z, d2=dx*dx+dy*dy+dz*dz;
+    if(d2<R2) cand.push([d2,i]); }
+  cand.sort((a,b)=>a[0]-b[0]);
+  const n=Math.min(WLMAX,cand.length);
+  for(let p=0;p<wlPool.length;p++){ const el=wlPool[p];
+    if(p>=n){ el.style.display='none'; continue; }
+    const i=cand[p][1]; _wlv.set(wlX[i],wlY[i],wlZ[i]).project(camera);
+    if(_wlv.z>1){ el.style.display='none'; continue; }
+    el.textContent=wlHe[i];
+    el.style.left=((_wlv.x*0.5+0.5)*innerWidth)+'px';
+    el.style.top=((-_wlv.y*0.5+0.5)*innerHeight)+'px';
+    el.style.opacity=String(Math.max(0.35,1-cand[p][0]/R2));
+    el.style.display='block';
+  }
+}
 let enrPeaks=[];
 const _lv=new THREE.Vector3();
 function repWord(gch,bin){               // most frequent word in chapter that lands in this bin
@@ -1012,6 +1067,7 @@ function recompute(){
   const wordMode=(state.gran==='word');
   const SPIR_DAW=Math.PI*2*110/totalWord;
   let lastWid=-1, lpx=0,lpy=0,lpz=0, lcr=0,lcg=0,lcb=0;
+  if(wordMode){ wlX=[]; wlY=[]; wlZ=[]; wlHe=[]; } else { wlX=[]; wlY=[]; wlZ=[]; wlHe=[]; }
   for(let k=0;k<N;k++){
     const b=pBook[k];
     if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
@@ -1060,7 +1116,8 @@ function recompute(){
       const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
       colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
     }
-    if(wordMode){ lastWid=pWid[k]; lpx=X;lpy=Y;lpz=Z; lcr=colA.array[k*3];lcg=colA.array[k*3+1];lcb=colA.array[k*3+2]; }
+    if(wordMode){ lastWid=pWid[k]; lpx=X;lpy=Y;lpz=Z; lcr=colA.array[k*3];lcg=colA.array[k*3+1];lcb=colA.array[k*3+2];
+      wlX.push(X); wlY.push(Y); wlZ.push(Z); wlHe.push(WORDS[pWid[k]].he); }
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
   geom.computeBoundingSphere(); geom.computeBoundingBox();
@@ -1881,6 +1938,7 @@ function animate(){
   else if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
   updateLabels();
+  if((wlFrame=(wlFrame+1)%4)===0) updateWordLabels();
   if(bokehPass&&bokehPass.enabled&&bokehPass.uniforms&&bokehPass.uniforms.focus){
     bokehPass.uniforms.focus.value=Math.max(10,camera.position.distanceTo(target)); }
   bgMesh.position.copy(camera.position); bgU.uTime.value=u.uTime.value;
@@ -1955,11 +2013,34 @@ document.querySelectorAll('#seg-theme button').forEach(b=>b.addEventListener('cl
 bindRange('s-glow','v-glow',v=>parseFloat(v).toFixed(2)+'×',v=>{ state.bloom=v;
   if(bloomPass) bloomPass.strength=v*((THEMES[state.theme]||THEMES.dark).bloom); });
 
+function makeSection(panel,label){
+  if(!panel) return;
+  const dh=document.createElement('div'); dh.className='sb-dh';
+  dh.innerHTML='<span>'+label+'</span><span class="dh-c">–</span>';
+  panel.insertBefore(dh,panel.firstChild);
+  const caret=dh.querySelector('.dh-c');
+  dh.addEventListener('click',()=>{ const col=panel.classList.toggle('collapsed'); caret.textContent=col?'+':'–'; });
+}
 function setupPanels(){
-  PANELS.forEach(([id,label])=>makeDraggable(id,label));
-  const m=loadPos();
-  for(const id in m){ const el=$(id); if(el){ el.style.left=m[id].l; el.style.top=m[id].t;
-    el.style.right='auto'; el.style.bottom='auto'; el.style.transform='none'; } }
+  const sb=document.createElement('div'); sb.id='sidebar'; document.body.appendChild(sb);
+  const hd=document.createElement('div'); hd.id='sb-head';
+  hd.innerHTML='<span class="sbt">תּוֹרָה · Topography</span><span id="sb-textbtn">📖 Text</span>';
+  sb.appendChild(hd);
+  /* docked, collapsible sections (in display order) */
+  const DOCK=[['title','About'],['modes','Layout'],['search','Search · Jump'],
+    ['ctrl','Controls'],['audio','Audio'],['stats','Stats']];
+  DOCK.forEach(([id,label])=>{ const el=$(id); if(el){ makeSection(el,label); sb.appendChild(el); } });
+  /* sidebar open/close toggle */
+  const tg=document.createElement('div'); tg.id='sb-toggle'; tg.textContent='‹'; tg.title='Hide / show panels';
+  document.body.appendChild(tg);
+  tg.addEventListener('click',()=>{ const closed=sb.classList.toggle('closed'); tg.classList.toggle('closed',closed);
+    tg.textContent=closed?'›':'‹'; });
+  /* Torah text reader = floating popup, opened from the sidebar */
+  makeDraggable('reader','Text'); makeDraggable('focus','Word');
+  const rd=$('reader'); if(rd) rd.classList.add('hidden');
+  const tb=$('sb-textbtn');
+  if(tb&&rd) tb.addEventListener('click',()=>{ const show=rd.classList.contains('hidden');
+    rd.classList.toggle('hidden',!show); tb.classList.toggle('on',show); });
 }
 
 /* ---- boot ----------------------------------------------------------------- */
