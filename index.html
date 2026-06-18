@@ -970,8 +970,9 @@ function updateWordLabels(){
   const show=(state.gran==='word') && points.visible && wlX.length>0;
   if(!show){ if(wlVisible){ for(const e of wlPool) e.style.display='none'; wlVisible=false; } return; }
   wlVisible=true;
-  const cam=camera.position, R=Math.max(260,sph.r*0.9), R2=R*R, cand=[];
-  for(let i=0;i<wlX.length;i++){ const dx=wlX[i]-cam.x,dy=wlY[i]-cam.y,dz=wlZ[i]-cam.z, d2=dx*dx+dy*dy+dz*dz;
+  /* rank by distance to the look-at point (target), not the camera — words sit ~sph.r away from the eye */
+  const tx=target.x,ty=target.y,tz=target.z, R=Math.max(120,sph.r*0.85), R2=R*R, cand=[];
+  for(let i=0;i<wlX.length;i++){ const dx=wlX[i]-tx,dy=wlY[i]-ty,dz=wlZ[i]-tz, d2=dx*dx+dy*dy+dz*dz;
     if(d2<R2) cand.push([d2,i]); }
   cand.sort((a,b)=>a[0]-b[0]);
   const n=Math.min(WLMAX,cand.length);
@@ -2015,7 +2016,7 @@ bindRange('s-glow','v-glow',v=>parseFloat(v).toFixed(2)+'×',v=>{ state.bloom=v;
 
 function makeSection(panel,label){
   if(!panel) return;
-  const dh=document.createElement('div'); dh.className='sb-dh';
+  const dh=document.createElement('div'); dh.className='dh sb-dh';
   dh.innerHTML='<span>'+label+'</span><span class="dh-c">–</span>';
   panel.insertBefore(dh,panel.firstChild);
   const caret=dh.querySelector('.dh-c');
