@@ -391,6 +391,19 @@
   </div>
   <div class="row" style="margin-top:11px"><span>Glow (bloom)</span><span class="val" id="v-glow">1.0×</span></div>
   <input type="range" id="s-glow" min="0" max="2.5" step="0.05" value="1">
+  <div class="row" style="margin-top:11px;margin-bottom:4px"><span>Letter colours</span></div>
+  <select id="s-palette" style="width:100%">
+    <option value="auto" selected>Topographic (theme)</option>
+    <option value="magma">Magma</option>
+    <option value="viridis">Viridis</option>
+    <option value="rainbow">Rainbow (spectral)</option>
+    <option value="ice">Ice</option>
+    <option value="ember">Ember</option>
+    <option value="neon">Neon</option>
+    <option value="gold">Gold / royal</option>
+    <option value="mono">Mono</option>
+  </select>
+  <div id="palbar" style="height:11px;border-radius:3px;margin-top:6px;background:var(--leggrad,#444)"></div>
 </div>
 <div id="search" class="panel">
   <input id="search-in" type="text" autocomplete="off" spellcheck="false"
@@ -625,6 +638,20 @@ function ramp(t){ // t in 0..1 -> rgb
   const a=STOPS[i], b=STOPS[i+1];
   return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
 }
+/* ---- selectable letter-colour palettes (chromatic scales) ---- */
+const PALETTE_HEX={
+  auto:    null,   /* follows the theme (topographic) */
+  magma:   ['#020413','#3b0f70','#8c2981','#de4968','#fe9f6d','#fcfdbf'],
+  viridis: ['#440154','#414487','#2a788e','#22a884','#7ad151','#fde725'],
+  rainbow: ['#5e4fa2','#3288bd','#66c2a5','#abdda4','#fee08b','#f46d43','#d53e4f'],
+  ice:     ['#03045e','#0077b6','#00b4d8','#48cae4','#90e0ef','#caf0f8'],
+  ember:   ['#03071e','#6a040f','#d00000','#e85d04','#faa307','#ffea00'],
+  neon:    ['#0d0221','#26408b','#0ff0fc','#39ff14','#f5d300','#ff2079'],
+  gold:    ['#1a1423','#3d2c8d','#916bbf','#c8a2c8','#f3d250','#fff3b0'],
+  mono:    ['#10131c','#3a4256','#6c7793','#a7b0c4','#e7ecf6']};
+const PALETTE_RGB={}; for(const k in PALETTE_HEX){ PALETTE_RGB[k]=PALETTE_HEX[k]?_hex(PALETTE_HEX[k]):null; }
+function palStops(){ const p=state&&state.palette; return (p&&p!=='auto'&&PALETTE_RGB[p])?PALETTE_RGB[p]:null; }
+function palGrad(){ const p=state&&state.palette; return (p&&p!=='auto'&&PALETTE_HEX[p])?('linear-gradient(90deg,'+PALETTE_HEX[p].join(',')+')'):null; }
 
 /* ---- layout constants ----------------------------------------------------- */
 const LETTER_GAP=1.0, WORD_GAP=0.7, LINE_GAP=1.0, HEIGHT_MAX=55;
@@ -1158,7 +1185,7 @@ const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
   books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter',
   colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1, tourFree:false,
-  spin:false, spinSpeed:1, dof:false, ssao:false};
+  spin:false, spinSpeed:1, dof:false, ssao:false, palette:'auto'};
 
 function curveFn(v){
   switch(state.curve){
@@ -2136,16 +2163,20 @@ function applyTheme(t){
   state.bloom=1; const gs=$('s-glow'); if(gs){ gs.value=1; } const gv=$('v-glow'); if(gv){ gv.textContent='1.00×'; }
   if(bloomPass){ bloomPass.strength=cfg.bloom; }
   scene.traverse(o=>{ if(o.material&&'needsUpdate' in o.material) o.material.needsUpdate=true; });
-  STOPS = cfg.ramp==='light'?STOPS_LIGHT:STOPS_DARK;
+  STOPS = palStops() || (cfg.ramp==='light'?STOPS_LIGHT:STOPS_DARK);
   if(material&&material.uniforms.uLight) material.uniforms.uLight.value=cfg.light?1:0;
-  const lb=$('legbar'); if(lb) lb.style.background=cfg.ramp==='light'?LEGGRAD_LIGHT:LEGGRAD_DARK;
+  const lb=$('legbar'); if(lb) lb.style.background=palGrad() || (cfg.ramp==='light'?LEGGRAD_LIGHT:LEGGRAD_DARK);
   try{localStorage.setItem('ttp_theme',t);}catch(e){}
   document.querySelectorAll('#seg-theme button').forEach(b=>b.classList.toggle('on',b.dataset.th===t));
+  if(typeof updatePalBar==='function') updatePalBar();
   if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();
 }
 document.querySelectorAll('#seg-theme button').forEach(b=>b.addEventListener('click',()=>applyTheme(b.dataset.th)));
 bindRange('s-glow','v-glow',v=>parseFloat(v).toFixed(2)+'×',v=>{ state.bloom=v;
   if(bloomPass) bloomPass.strength=v*((THEMES[state.theme]||THEMES.dark).bloom); });
+const _palSel=$('s-palette'); if(_palSel) _palSel.addEventListener('change',e=>{ state.palette=e.target.value; applyTheme(state.theme); });
+function updatePalBar(){ const pb=$('palbar'); if(!pb)return; const cfg=THEMES[state.theme]||THEMES.dark;
+  pb.style.background=palGrad()||(cfg.ramp==='light'?LEGGRAD_LIGHT:LEGGRAD_DARK); }
 
 function makeSection(panel,label){
   if(!panel) return;
