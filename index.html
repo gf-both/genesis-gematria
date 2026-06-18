@@ -318,7 +318,7 @@
     <button data-m="scroll" class="on">Scroll</button>
     <button data-m="sphere">Sphere</button>
     <button data-m="spiral">Spiral</button>
-    <button data-m="meaning">Meaning</button>
+    <button data-m="meaning">Topography</button>
     <button data-m="map">Map</button>
   </div>
   <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
@@ -931,12 +931,18 @@ function applyEnrich(){               // re-shape from curve + exaggerate + laye
     if(state.gran==='word'){ const mx=state.sofit?MAXWsof:MAXW; val=Math.expm1((b+0.5)/WBANDS*Math.log1p(mx)); }
     else { val=(ALEPHBET[b]?ALEPHBET[b][1]:0); }
     bandOn[b]=(val>=lo && val<=hi); }
+  /* smooth edge taper: fade the surface height to 0 within a margin of the border so the map has
+     soft shores instead of sharp cliffs at its rectangular edges */
+  const FXn=ENR_FX-1||1, FYn=ENR_FY-1||1, MX=0.085, MY=0.06;
+  const ss=t=>{ t=t<0?0:t>1?1:t; return t*t*(3-2*t); };
   for(let v=0;v<eRawH.length;v++){
     const bin=eLet[v];
     const on=(!lAny||letterOn[bin]) && bandOn[bin];
     let h=curveFn(eRawH[v]);
     if(state.layers) h=Math.round(h*(LAYER_BANDS-1))/(LAYER_BANDS-1);
-    pa.array[v*3+2]= on ? h*ENR_H*state.exag : 0;
+    const fx=(v%ENR_FX)/FXn, fy=((v/ENR_FX)|0)/FYn;
+    const edge=ss(Math.min(fx,1-fx)/MX)*ss(Math.min(fy,1-fy)/MY);
+    pa.array[v*3+2]= on ? h*ENR_H*state.exag*edge : 0;
     const rgb=ramp(on?h:0), d=on?1:0.35;
     ca.array[v*3]=rgb[0]*d; ca.array[v*3+1]=rgb[1]*d; ca.array[v*3+2]=rgb[2]*d;
   }
