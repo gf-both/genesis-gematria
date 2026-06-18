@@ -982,7 +982,7 @@ const WORD_RECT={}; let wordAtlasTex=null;
   for(const [f,px,py,w] of place){ g.fillText(f, px+w/2, py+FH/2); WORD_RECT[f]=[px/AW,py/AH,w/AW,FH/AH, w/FH]; }
   wordAtlasTex=new THREE.CanvasTexture(cv); wordAtlasTex.minFilter=THREE.LinearFilter; wordAtlasTex.magFilter=THREE.LinearFilter;
 })();
-let wordMesh=null, wordGeom=null;
+let wordMesh=null, wordGeom=null, wordScene=null;
 (function buildWordMesh(){
   wordGeom=new THREE.InstancedBufferGeometry();
   /* a unit quad as the 'position' attribute (z=0) — renderer needs 'position' to count vertices */
@@ -997,8 +997,8 @@ let wordMesh=null, wordGeom=null;
         vUv=iUV.xy + (position.xy+0.5)*iUV.zw; }`,
     fragmentShader:`uniform sampler2D uAtlas; uniform vec3 uColor; varying vec2 vUv;
       void main(){ float a=texture2D(uAtlas,vUv).a; if(a<0.45) discard; gl_FragColor=vec4(uColor,1.0); }`});
-  wordMesh=new THREE.Mesh(wordGeom,mat); wordMesh.frustumCulled=false; wordMesh.visible=false; wordMesh.renderOrder=4;
-  scene.add(wordMesh);
+  wordMesh=new THREE.Mesh(wordGeom,mat); wordMesh.frustumCulled=false; wordMesh.visible=false;
+  wordScene=new THREE.Scene(); wordScene.add(wordMesh);   /* rendered as a crisp overlay AFTER bloom */
 })();
 function rebuildWordMesh(){
   if(!wordMesh) return; const n=wlX.length; if(!n){ wordMesh.visible=false; return; }
@@ -1975,6 +1975,9 @@ function animate(){
     bokehPass.uniforms.focus.value=Math.max(10,camera.position.distanceTo(target)); }
   bgMesh.position.copy(camera.position); bgU.uTime.value=u.uTime.value;
   if(composer) composer.render(); else renderer.render(scene,camera);
+  /* crisp word overlay (no bloom) — drawn on top of the composited frame */
+  if(wordMesh&&wordMesh.visible&&wordScene){ renderer.autoClear=false; renderer.clearDepth();
+    renderer.render(wordScene,camera); renderer.autoClear=true; }
 }
 
 /* ===== v2.0 · draggable, persistent panels ===== */
