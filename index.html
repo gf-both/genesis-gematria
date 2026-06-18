@@ -46,6 +46,8 @@
     background:linear-gradient(0deg,#0c0300 0%,#2a0a00 28%,#6e1900 55%,#c4480a 80%,#ffae3b 100%);
     background-size:160% 220%;animation:fire 7s ease-in-out infinite}
   body.bg-fire #bgfx::after{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 120%,rgba(255,180,60,.35),transparent 60%)}
+  body.bg-ocean #bgfx{display:block;background:radial-gradient(circle at 50% 30%,#0c4a66 0%,#073449 45%,#010810 100%)}
+  body.bg-royal #bgfx{display:block;background:radial-gradient(circle at 50% 35%,#3a2870 0%,#1c1340 50%,#0a0612 100%)}
   @keyframes psy{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
   @keyframes fire{0%,100%{background-position:50% 100%}50%{background-position:50% 0%}}
   @keyframes aur{to{transform:rotate(360deg)}}
@@ -212,6 +214,18 @@
   .lchip.on .lg,.lchip.on .lv{color:var(--void)}
   /* v1.4 search box */
   #search{top:18px;left:50%;transform:translateX(-50%);z-index:22;padding:8px 10px;width:340px;max-width:calc(100vw - 36px)}
+  #audio{top:18px;right:18px;left:auto;z-index:21;padding:12px 14px;width:212px}
+  #audio select{background:rgba(255,255,255,.05);border:1px solid var(--panelbrd);border-radius:8px;
+    color:var(--ink);font-family:var(--sans);font-size:12px;padding:6px 8px;outline:none}
+  #pin-list{display:flex;flex-direction:column;gap:4px}
+  .pinrow{display:flex;align-items:center;gap:6px;font-size:11px}
+  .pinrow .pn{flex:1;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    padding:3px 6px;border-radius:6px;background:rgba(255,255,255,.05)}
+  .pinrow .pn:hover{background:rgba(227,178,60,.22)}
+  .pinrow .px{cursor:pointer;opacity:.55;padding:0 3px}.pinrow .px:hover{opacity:1;color:#e3b23c}
+  .rw{cursor:pointer;border-radius:3px}
+  .rw:hover{background:rgba(227,178,60,.18)}
+  .rw.rwhot{background:rgba(227,178,60,.55);color:#fff;box-shadow:0 0 8px rgba(227,178,60,.5)}
   #search-in{width:100%;box-sizing:border-box;background:rgba(255,255,255,.05);border:1px solid var(--panelbrd);
     border-radius:8px;color:var(--ink);font-family:var(--sans);font-size:12.5px;padding:8px 11px;outline:none}
   #search-in::placeholder{color:var(--dim)}
@@ -257,6 +271,7 @@
   <h1>Torah · Topography of Gematria</h1>
   <div class="meta">
     <span>Letters</span><b class="num" id="t-let">—</b>
+    <span>Words</span><b class="num" id="t-word">—</b>
     <span>Verses</span><b class="num" id="t-ver">—</b>
     <span>Chapters</span><b class="num" id="t-chap">—</b>
   </div>
@@ -280,10 +295,23 @@
   </div>
   <div class="row" style="margin-top:8px"><span>Tour speed</span><span class="val" id="v-tspeed">1.0×</span></div>
   <input type="range" id="s-tspeed" min="0.02" max="3" step="0.02" value="1">
+  <button id="spin" class="act" style="margin-top:9px;width:100%">⟳ Spin slowly</button>
+  <div class="row" style="margin-top:8px"><span>Spin speed</span><span class="val" id="v-spin">1.0×</span></div>
+  <input type="range" id="s-spin" min="0.05" max="4" step="0.05" value="1">
+  <div class="row" style="margin-top:11px"><span>Cinematic</span></div>
+  <label class="toggle" style="margin-top:4px"><input type="checkbox" id="c-dof"><span class="tk"></span>Depth of field</label>
+  <label class="toggle" style="margin-top:6px"><input type="checkbox" id="c-ssao"><span class="tk"></span>Ambient occlusion (mesh)</label>
   <div class="acts" style="margin-top:9px">
     <button class="act" id="btn-share">Share link</button>
     <button class="act" id="btn-obj">Export .obj</button>
   </div>
+  <div class="acts" style="margin-top:6px">
+    <button class="act" id="btn-png">Snapshot PNG</button>
+    <button class="act" id="btn-rec">● Record WebM</button>
+  </div>
+  <div class="row" style="margin-top:11px"><span>Camera pins</span><span class="val" id="v-pins">0</span></div>
+  <div class="acts" style="margin-top:4px"><button class="act" id="pin-add" style="width:100%">＋ Pin this view</button></div>
+  <div id="pin-list" style="margin-top:6px"></div>
 </div>
 <div id="search" class="panel">
   <input id="search-in" type="text" autocomplete="off" spellcheck="false"
@@ -292,6 +320,30 @@
   <input id="meaning-in" type="text" autocomplete="off" spellcheck="false" style="margin-top:8px"
     placeholder="Find by meaning · e.g. king · light · covenant">
   <div id="meaning-hint"></div>
+</div>
+<div id="audio" class="panel">
+  <span class="lbl">Cantillation · טעמי המקרא</span>
+  <div class="acts" style="margin-top:6px">
+    <button class="act" id="au-play" style="flex:2">▶ Chant</button>
+    <button class="act" id="au-stop">■ Stop</button>
+  </div>
+  <div id="au-now" style="margin-top:7px;font-size:11px;opacity:.8;min-height:14px"></div>
+  <div class="row" style="margin-top:9px;margin-bottom:4px"><span>Voice</span></div>
+  <select id="au-voice" style="width:100%">
+    <option value="cantor">Cantor (voice)</option>
+    <option value="reed">Reed</option>
+    <option value="flute">Flute</option>
+    <option value="strings">Strings</option>
+    <option value="bell">Bell</option>
+    <option value="shofar">Shofar / horn</option>
+  </select>
+  <div class="row" style="margin-top:10px"><span>Tempo</span><span class="val" id="v-tempo">55</span></div>
+  <input type="range" id="s-tempo" min="30" max="120" step="1" value="55">
+  <div class="row" style="margin-top:8px"><span>Volume</span><span class="val" id="v-vol">-6 dB</span></div>
+  <input type="range" id="s-vol" min="-32" max="2" step="1" value="-6">
+  <label class="toggle" style="margin-top:10px"><input type="checkbox" id="au-sync" checked><span class="tk"></span>Sync visuals + reader</label>
+  <label class="toggle" style="margin-top:6px"><input type="checkbox" id="au-loop"><span class="tk"></span>Continue through books</label>
+  <div style="margin-top:7px;font-size:10.5px;opacity:.6;line-height:1.4">Click any word in the Text panel, or a letter in the scene, then ▶ Chant to start there. Stylized Ashkenazi trope.</div>
 </div>
 <div id="reader" class="panel">
   <div class="rhead">
@@ -361,6 +413,8 @@
       <button data-th="aurora">Aurora</button>
       <button data-th="psychedelic">Psychedelic</button>
       <button data-th="fire">Fire</button>
+      <button data-th="ocean">Ocean</button>
+      <button data-th="royal">Royal</button>
     </div>
     <div class="row" style="margin-top:11px"><span>Glow (bloom)</span><span class="val" id="v-glow">1.0×</span></div>
     <input type="range" id="s-glow" min="0" max="2.5" step="0.05" value="1">
@@ -433,6 +487,7 @@
   <div class="fm" id="fx-mr"></div>
   <div class="fr"><span>Reference</span><b id="fx-ref"></b></div>
   <div class="fr"><span>Gematria (word)</span><b id="fx-val"></b></div>
+  <div class="fr"><span>Appears in text</span><b id="fx-freq"></b></div>
   <div class="fr"><span>Root</span><b id="fx-root"></b></div>
   <div class="fbtns">
     <button id="fx-broot">Same root</button>
@@ -451,9 +506,19 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<!-- v3.2 cinematic passes: SSAO + Bokeh depth-of-field -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/math/SimplexNoise.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/SSAOShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/DepthLimitedBlurShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/BokehShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/SSAOPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/BokehPass.js"></script>
+<!-- v3.2 audio: Tone.js for cantillation (te'amim) synthesis -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 <script src="torah_data.js"></script>
 <script src="torah_en.js"></script>
 <script src="torah_gloss.js"></script>
+<script src="trope_data.js"></script>
 <script>
 /* ============================================================================
    Genesis · Topography of Gematria
@@ -509,6 +574,7 @@ const pCode=new Int32Array(N), pBook=new Uint8Array(N), pGChap=new Int16Array(N)
 const xInLine=new Float32Array(N);        // world x within verse line (with word gaps)
 const bookLine=new Int32Array(N);         // 0-based line within its book
 const bookLetter=new Int32Array(N);       // 0-based letter within its book
+const bookWord=new Int32Array(N);         // 0-based word within its book (shared by word's letters)
 const pWsum=new Int32Array(N), pWsumSof=new Int32Array(N);  // word total gematria (shared by word's letters)
 const pWid=new Int32Array(N);             // global word index per letter
 const WORDS=[];                           // {he, sum, sumSof, gch} per word
@@ -517,7 +583,7 @@ const VERSES=[];
 (function build(){
   let i=0, gch=0;
   for(let b=0;b<BOOKS.length;b++){
-    const meta={lines:0,letters:0,maxLine:0}; let bl=0, blet=0;
+    const meta={lines:0,letters:0,maxLine:0,words:0}; let bl=0, blet=0, bword=0;
     const chs=BOOKS[b].chapters;
     for(let c=0;c<chs.length;c++){
       for(let vv=0;vv<chs[c].length;vv++){
@@ -533,10 +599,10 @@ const VERSES=[];
             const g=GEM[chr]||0; gemStd[i]=g; gemSof[i]=SOFIT[chr]||g;
             pWsum[i]=ws; pWsumSof[i]=wss; pWid[i]=wid;
             pBook[i]=b; pChap[i]=c+1; pVerse[i]=vv+1; pCol[i]=col+1; pLineLen[i]=lineLen;
-            pCode[i]=code; pGChap[i]=gch; xInLine[i]=x; bookLine[i]=bl; bookLetter[i]=blet;
+            pCode[i]=code; pGChap[i]=gch; xInLine[i]=x; bookLine[i]=bl; bookLetter[i]=blet; bookWord[i]=bword;
             x+=LETTER_GAP; col++; i++; blet++;
           }
-          x+=WORD_GAP;
+          x+=WORD_GAP; bword++;
         }
         if(x>meta.maxLine)meta.maxLine=x;
         VERSES.push({b:b,c:c+1,v:vv+1,gi:vstart,n:i-vstart,he:verse.join(' '),
@@ -545,7 +611,7 @@ const VERSES=[];
       }
       gch++;
     }
-    meta.lines=bl; meta.letters=blet; BK.push(meta);
+    meta.lines=bl; meta.letters=blet; meta.words=bword; BK.push(meta);
   }
 })();
 let MAXW=1, MAXWsof=1;
@@ -581,7 +647,7 @@ const BG_DARK=0x06070d, BG_LIGHT=0xece6d8;   /* observatory dark · parchment li
 const BG = THEME==='light'?BG_LIGHT:BG_DARK;
 const scene=new THREE.Scene();
 scene.fog=new THREE.FogExp2(BG,0.00085);
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.setClearColor(BG,1);
@@ -600,7 +666,14 @@ const bgMat=new THREE.ShaderMaterial({uniforms:bgU,side:THREE.BackSide,depthWrit
     void main(){
       float t=clamp(vDir.y*0.5+0.5,0.0,1.0);
       vec3 col=mix(uBot,uTop,t);
-      if(uStyle>3.5){ float h=0.5+0.5*sin(uTime*0.06+vDir.x*2.2+vDir.y*1.4); col=mix(col,hue(h)*0.32+0.05,0.40); }
+      if(uStyle>5.5){ /* royal: slow golden god-rays + shimmer */
+        float ray=0.5+0.5*sin(vDir.x*5.0+uTime*0.08); ray*=smoothstep(0.0,0.9,t);
+        float sh=0.5+0.5*sin(vDir.x*22.0+uTime*0.25)*sin(vDir.y*18.0);
+        col+=uTint*(0.10*ray+0.05*sh*t); }
+      else if(uStyle>4.5){ /* ocean: drifting caustic waves in the deep */
+        float w=sin(vDir.x*8.0+uTime*0.20)+sin(vDir.y*6.0-uTime*0.16)+sin((vDir.x+vDir.y)*5.0+uTime*0.12);
+        float c=0.5+0.166*w; col=mix(uBot,uTop,pow(t,1.3)); col+=uTint*0.10*c*smoothstep(0.05,0.7,t); }
+      else if(uStyle>3.5){ float h=0.5+0.5*sin(uTime*0.06+vDir.x*2.2+vDir.y*1.4); col=mix(col,hue(h)*0.32+0.05,0.40); }
       else if(uStyle>2.5){ float f=pow(1.0-t,1.5); col=mix(uBot,uTop,f); col+=vec3(0.26,0.08,0.0)*pow(max(0.0,sin(uTime*0.7+vDir.x*3.0))*(1.0-t),2.0); }
       else if(uStyle>1.5){ float a=0.5+0.5*sin(uTime*0.35+vDir.x*3.0+vDir.y*2.0); col+=uTint*0.12*a*smoothstep(0.15,0.85,t); }
       else if(uStyle>0.5){ float n=0.5+0.5*sin(vDir.x*9.0)*sin(vDir.y*7.0+uTime*0.12); col+=uTint*0.045*n; }
@@ -609,14 +682,28 @@ const bgMat=new THREE.ShaderMaterial({uniforms:bgU,side:THREE.BackSide,depthWrit
 const bgMesh=new THREE.Mesh(new THREE.SphereGeometry(12000,32,16),bgMat);
 bgMesh.frustumCulled=false; bgMesh.renderOrder=-10; scene.add(bgMesh);
 
-let composer=null, bloomPass=null;
+let composer=null, bloomPass=null, ssaoPass=null, bokehPass=null;
 function setupComposer(){
   if(!(THREE.EffectComposer&&THREE.RenderPass&&THREE.UnrealBloomPass)) return false;
   composer=new THREE.EffectComposer(renderer);
   composer.addPass(new THREE.RenderPass(scene,camera));
+  // SSAO (mesh contact shadows) — disabled by default, gated to mesh modes
+  try{ if(THREE.SSAOPass){ ssaoPass=new THREE.SSAOPass(scene,camera,innerWidth,innerHeight);
+    ssaoPass.kernelRadius=8; ssaoPass.minDistance=0.002; ssaoPass.maxDistance=0.1;
+    ssaoPass.enabled=false; composer.addPass(ssaoPass); } }catch(e){ ssaoPass=null; }
   bloomPass=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.85,0.6,0.15);
   composer.addPass(bloomPass);
+  // Bokeh depth-of-field — disabled by default
+  try{ if(THREE.BokehPass){ bokehPass=new THREE.BokehPass(scene,camera,{focus:600,aperture:0.00004,maxblur:0.012,width:innerWidth,height:innerHeight});
+    bokehPass.enabled=false; composer.addPass(bokehPass); } }catch(e){ bokehPass=null; }
+  // always-on output copy so disabling an optional pass never blanks the screen
+  try{ if(THREE.ShaderPass&&THREE.CopyShader){ const out=new THREE.ShaderPass(THREE.CopyShader); composer.addPass(out); } }catch(e){}
   return true;
+}
+function updateFX(){
+  const meshMode=(state.mode==='meaning'||state.mode==='map');
+  if(ssaoPass) ssaoPass.enabled=!!(state.ssao&&meshMode);
+  if(bokehPass) bokehPass.enabled=!!state.dof;
 }
 
 /* base "page" plane at z=0 with hairline edge frame — refit per layout mode */
@@ -870,7 +957,8 @@ function updateLabels(){
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
   books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter',
-  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1, tourFree:false};
+  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1, tourFree:false,
+  spin:false, spinSpeed:1, dof:false, ssao:false};
 
 function curveFn(v){
   switch(state.curve){
@@ -889,18 +977,25 @@ function recompute(){
   const posA=geom.attributes.position, colA=geom.attributes.aColor;
   const m=state.mode, lay=state.layers, str=(state.layout==='string');
   const sb=selectedBooks();
-  const lineBase={}, letBase={}; const perCol=SCROLL_W*SCROLL_H;
-  let accL=0, accLet=0;
-  sb.forEach(b=>{ lineBase[b]=accL; accL+=BK[b].lines; letBase[b]=accLet; accLet+=BK[b].letters; });
+  const lineBase={}, letBase={}, wordBase={}; const perCol=SCROLL_W*SCROLL_H;
+  let accL=0, accLet=0, accWord=0;
+  sb.forEach(b=>{ lineBase[b]=accL; accL+=BK[b].lines; letBase[b]=accLet; accLet+=BK[b].letters; wordBase[b]=accWord; accWord+=BK[b].words; });
+  const totalWord=accWord||1;
   /* STACK uses FIXED absolute slots over ALL books, so a deselected book leaves an empty gap */
   let maxLineAll=0; for(let bb=0;bb<BOOKS.length;bb++) if(BK[bb].maxLine>maxLineAll) maxLineAll=BK[bb].maxLine;
   const terGapFixed=maxLineAll+24; const fixedScrX={}; let accAll=0;
   for(let bb=0;bb<BOOKS.length;bb++){ fixedScrX[bb]=accAll; accAll+=(Math.ceil(BK[bb].letters/perCol)+1)*(SCROLL_W+SCROLL_COLGAP); }
   const totalLet=accLet||1, GA=Math.PI*(3-Math.sqrt(5));
   const SPIR_DA=Math.PI*2*110/totalLet, SPIR_R=150, SPIR_H=1700;  /* coil: 110 turns */
+  const wordMode=(state.gran==='word');
+  const SPIR_DAW=Math.PI*2*110/totalWord;
+  let lastWid=-1, lpx=0,lpy=0,lpz=0, lcr=0,lcg=0,lcb=0;
   for(let k=0;k<N;k++){
     const b=pBook[k];
     if(!state.books.has(b)){ posA.array[k*3]=0;posA.array[k*3+1]=0;posA.array[k*3+2]=0; continue; }
+    /* word view: collapse every letter of a word onto a single point */
+    if(wordMode && pWid[k]===lastWid){ posA.array[k*3]=lpx;posA.array[k*3+1]=lpy;posA.array[k*3+2]=lpz;
+      colA.array[k*3]=lcr;colA.array[k*3+1]=lcg;colA.array[k*3+2]=lcb; continue; }
     let nv;
     if(state.gran==='word'){ nv=(state.sofit?pWsumSof[k]:pWsum[k])/(state.sofit?MAXWsof:MAXW); }
     else { const g=state.sofit?gemSof[k]:gemStd[k]; nv=(g-lo)/span; }
@@ -910,12 +1005,14 @@ function recompute(){
     const h = hv*HEIGHT_MAX*state.exag;
     let X,Y,Z;
     if(m==='spiral'){
-      const s=str?(letBase[b]+bookLetter[k]):bookLetter[k];
-      const ang=s*SPIR_DA, R=SPIR_R+h*1.4;
-      X=Math.cos(ang)*R; Y=(s/totalLet-0.5)*SPIR_H; Z=Math.sin(ang)*R;
+      const s=wordMode ? (str?(wordBase[b]+bookWord[k]):bookWord[k]) : (str?(letBase[b]+bookLetter[k]):bookLetter[k]);
+      const tot=wordMode?totalWord:totalLet, da=wordMode?SPIR_DAW:SPIR_DA;
+      const ang=s*da, R=SPIR_R+h*1.4;
+      X=Math.cos(ang)*R; Y=(s/tot-0.5)*SPIR_H; Z=Math.sin(ang)*R;
     } else if(m==='sphere'){
-      const s=letBase[b]+bookLetter[k];
-      const yy=1-2*((s+0.5)/totalLet), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
+      const s=wordMode ? (wordBase[b]+bookWord[k]) : (letBase[b]+bookLetter[k]);
+      const tot=wordMode?totalWord:totalLet;
+      const yy=1-2*((s+0.5)/tot), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
       X=Math.cos(ph)*rr*R; Y=yy*R; Z=Math.sin(ph)*rr*R;
     } else if(m==='scroll'){
       const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
@@ -935,6 +1032,7 @@ function recompute(){
       const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
       colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
     }
+    if(wordMode){ lastWid=pWid[k]; lpx=X;lpy=Y;lpz=Z; lcr=colA.array[k*3];lcg=colA.array[k*3+1];lcb=colA.array[k*3+2]; }
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
   geom.computeBoundingSphere(); geom.computeBoundingBox();
@@ -945,7 +1043,7 @@ function recompute(){
 /* selection / isolation + live stats */
 function applySelection(){
   const sA=geom.attributes.aSel, any=state.chapters.size>0, txt=state.textActive, lAny=letterCount>0;
-  let count=0, sum=0, vSet=new Set(), cSet=new Set();
+  let count=0, sum=0, vSet=new Set(), cSet=new Set(), wSet=new Set();
   for(let k=0;k<N;k++){
     if(!state.books.has(pBook[k])){ sA.array[k]=-1; continue; }
     const chosen = txt ? (textMask[k]===1)
@@ -956,7 +1054,7 @@ function applySelection(){
     sA.array[k]=s;
     if(s===1){
       count++; sum+=(state.sofit?gemSof[k]:gemStd[k]);
-      cSet.add(pGChap[k]); vSet.add(pGChap[k]*1000+pVerse[k]);
+      cSet.add(pGChap[k]); vSet.add(pGChap[k]*1000+pVerse[k]); wSet.add(pWid[k]);
     }
   }
   sA.needsUpdate=true;
@@ -965,6 +1063,7 @@ function applySelection(){
   document.getElementById('x-sum').textContent=fmt(sum);
   document.getElementById('x-mean').textContent=count?(sum/count).toFixed(1):'—';
   document.getElementById('t-let').textContent=fmt(count);
+  document.getElementById('t-word').textContent=fmt(wSet.size);
   document.getElementById('t-ver').textContent=fmt(vSet.size);
   document.getElementById('t-chap').textContent=fmt(cSet.size);
 }
@@ -1173,9 +1272,13 @@ function buildReader(){
   for(let i=0;i<VERSES.length;i++){
     const V=VERSES[i]; if(!state.books.has(V.b)) continue;
     if(V.b!==lastBook){ html+='<div class="rbook">'+BOOKS[V.b].he+' · '+BOOKS[V.b].name+'</div>'; lastBook=V.b; }
-    html+='<div class="rv" data-gi="'+V.gi+'" data-n="'+V.n+'">'
+    const words=V.he.split(' '); const startWid=pWid[V.gi]; let off=V.gi, wspans='';
+    for(let j=0;j<words.length;j++){ const wl=words[j].length;
+      wspans+='<span class="rw" data-wid="'+(startWid+j)+'" data-gi="'+off+'" data-n="'+wl+'">'+escHtml(words[j])+'</span>'+(j<words.length-1?' ':'');
+      off+=wl; }
+    html+='<div class="rv" data-gi="'+V.gi+'" data-n="'+V.n+'" data-vi="'+i+'">'
         +'<div class="ref">'+BOOK_SHORT[V.b]+' '+V.c+':'+V.v+'</div>'
-        +'<div class="he" dir="rtl">'+escHtml(V.he)+'</div>'
+        +'<div class="he" dir="rtl">'+wspans+'</div>'
         +'<div class="en">'+escHtml(V.en)+'</div></div>';
   }
   $('reader-body').innerHTML=html;
@@ -1254,6 +1357,7 @@ function setMode(m){
   state.mode=m;
   const meshMode=(m==='meaning'||m==='map');
   points.visible=!meshMode; enrGroup.visible=meshMode;
+  if(typeof updateFX==='function') updateFX();
   if(meshMode){
     basePlane.visible=false; baseEdges.visible=false;
     rebuildEnrich();
@@ -1399,6 +1503,7 @@ dom.addEventListener('dblclick',e=>{
 
 /* ===== v1.9 · focus card, root/value highlight, meaning search, POS, tour, share, OBJ ===== */
 const lemmaCount={}; for(let i=0;i<wordLemma.length;i++){const L=wordLemma[i]; if(L)lemmaCount[L]=(lemmaCount[L]||0)+1;}
+const formCount={}; for(let i=0;i<WORDS.length;i++){const f=WORDS[i].he; formCount[f]=(formCount[f]||0)+1;}
 let focusK=-1;
 function openFocus(k){
   focusK=k; const w=WORDS[pWid[k]], gl=GLOSS[w.he], L=wordLemma[pWid[k]];
@@ -1408,6 +1513,7 @@ function openFocus(k){
   $('fx-mr').textContent=gl&&gl[4]?gl[4]:'';
   $('fx-ref').textContent=BOOKS[pBook[k]].name+' '+pChap[k]+':'+pVerse[k];
   $('fx-val').textContent=(state.sofit?w.sumSof:w.sum);
+  $('fx-freq').textContent=(formCount[w.he]||1).toLocaleString('en-US')+'× (this spelling)';
   $('fx-root').textContent = L ? ((gl&&gl[1]?gl[1]:'#'+L)+' · '+(lemmaCount[L]||0)+'×') : '—';
   $('focus').classList.add('on');
 }
@@ -1486,6 +1592,179 @@ $('btn-share').addEventListener('click',()=>{ history.replaceState(null,'','#'+b
   if(navigator.clipboard&&navigator.clipboard.writeText)
     navigator.clipboard.writeText(location.href).then(()=>flashShare('link copied ✓')).catch(()=>flashShare('link in address bar'));
   else flashShare('link in address bar'); });
+/* ===== v3.2 · spin · cinematic FX · capture · camera pins ===== */
+$('spin').addEventListener('click',()=>{ state.spin=!state.spin; $('spin').classList.toggle('on',state.spin); if(state.spin) userMoved=true; });
+bindRange('s-spin','v-spin',v=>parseFloat(v).toFixed(1)+'×',v=>{state.spinSpeed=v;});
+$('c-dof').addEventListener('change',e=>{ state.dof=e.target.checked; updateFX(); });
+$('c-ssao').addEventListener('change',e=>{ state.ssao=e.target.checked; updateFX(); });
+
+$('btn-png').addEventListener('click',()=>{
+  if(composer) composer.render(); else renderer.render(scene,camera);
+  renderer.domElement.toBlob(b=>{ if(!b)return; const a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download='torah-'+state.mode+'-'+Date.now()+'.png';
+    document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},150);
+  },'image/png');
+});
+let rec=null, recChunks=[];
+$('btn-rec').addEventListener('click',()=>{
+  const btn=$('btn-rec');
+  if(rec&&rec.state!=='inactive'){ rec.stop(); return; }
+  if(!renderer.domElement.captureStream){ btn.textContent='not supported'; setTimeout(()=>btn.textContent='● Record WebM',1600); return; }
+  const stream=renderer.domElement.captureStream(30);
+  let mime='video/webm;codecs=vp9'; if(!(window.MediaRecorder&&MediaRecorder.isTypeSupported(mime))) mime='video/webm';
+  try{ rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:12000000}); }catch(err){ btn.textContent='not supported'; setTimeout(()=>btn.textContent='● Record WebM',1600); return; }
+  recChunks=[]; rec.ondataavailable=e=>{ if(e.data&&e.data.size) recChunks.push(e.data); };
+  rec.onstop=()=>{ const blob=new Blob(recChunks,{type:'video/webm'}); const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob); a.download='torah-'+state.mode+'-'+Date.now()+'.webm';
+    document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},150);
+    btn.textContent='● Record WebM'; btn.classList.remove('on'); };
+  rec.start(); btn.textContent='■ Stop recording'; btn.classList.add('on');
+});
+
+/* camera pins (bookmarked views) */
+function loadPins(){ try{return JSON.parse(localStorage.getItem('ttp_pins')||'[]');}catch(e){return [];} }
+function savePins(a){ try{localStorage.setItem('ttp_pins',JSON.stringify(a));}catch(e){} }
+function renderPins(){ const list=$('pin-list'), pins=loadPins(); $('v-pins').textContent=pins.length;
+  list.innerHTML=''; pins.forEach((p,i)=>{ const row=document.createElement('div'); row.className='pinrow';
+    row.innerHTML='<span class="pn" title="Fly to view">'+escHtml(p.name)+'</span><span class="px" title="Delete">×</span>';
+    row.querySelector('.pn').onclick=()=>gotoPin(p);
+    row.querySelector('.px').onclick=()=>{ const a=loadPins(); a.splice(i,1); savePins(a); renderPins(); };
+    list.appendChild(row); }); }
+function gotoPin(p){ if(p.mode&&p.mode!==state.mode){ setMode(p.mode); document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.toggle('on',x.dataset.m===p.mode)); }
+  markUser(); tween={t:0,fT:target.clone(),tT:new THREE.Vector3(p.tx,p.ty,p.tz),fR:sph.r,tR:p.r};
+  const sT=sph.theta,sP=sph.phi; const iv=setInterval(()=>{ sph.theta+=(p.th-sT)*0.08; sph.phi+=(p.ph-sP)*0.08; },16);
+  setTimeout(()=>{ clearInterval(iv); sph.theta=p.th; sph.phi=p.ph; },420); }
+$('pin-add').addEventListener('click',()=>{
+  const def=BOOKS[pBook[focusK>=0?focusK:0]]?'':''; let nm=prompt('Name this view:', state.mode+' · '+new Date().toLocaleTimeString());
+  if(nm===null) return; if(!nm) nm=state.mode;
+  const a=loadPins(); a.push({name:nm,mode:state.mode,tx:target.x,ty:target.y,tz:target.z,r:sph.r,th:sph.theta,ph:sph.phi});
+  savePins(a); renderPins();
+});
+renderPins();
+
+/* ===== v3.2 · cantillation (ta'amei ha-mikra) audio engine — AUDIO ONLY ===== */
+/* The trope text drives the melody + word sync only; it never alters the geometry. */
+const TEAM_NAMES={0x0591:'etnachta',0x0592:'segol',0x0593:'shalshelet',0x0594:'zaqef-qatan',0x0595:'zaqef-gadol',
+ 0x0596:'tipcha',0x0597:'revia',0x0598:'zarqa',0x0599:'pashta',0x059A:'yetiv',0x059B:'tevir',0x059C:'geresh',
+ 0x059D:'geresh-muqdam',0x059E:'gershayim',0x059F:'qarne-para',0x05A0:'telisha-gedola',0x05A1:'pazer',
+ 0x05A3:'munach',0x05A4:'mahapach',0x05A5:'mercha',0x05A6:'mercha-kefula',0x05A7:'darga',0x05A8:'qadma',
+ 0x05A9:'telisha-qetana',0x05AA:'yerach-ben-yomo',0x05AD:'dehi',0x05AE:'zinor'};
+/* stylized Ashkenazi Torah motifs — [scale-degree, beats] */
+const MOTIF={
+ conj:[[0,0.45]], munach:[[0,0.5]], mercha:[[-1,0.5]], darga:[[0,0.33],[1,0.33],[2,0.33]],
+ qadma:[[3,0.4],[4,0.4]], mahapach:[[1,0.4],[2,0.4]], 'telisha-qetana':[[3,0.25],[4,0.3]],
+ 'mercha-kefula':[[-1,0.4],[-1,0.4]], tipcha:[[2,0.4],[1,0.4],[0,0.7]], etnachta:[[0,0.4],[2,0.5],[0,1.1]],
+ 'zaqef-qatan':[[3,0.4],[2,0.4],[4,0.8]], 'zaqef-gadol':[[2,0.4],[4,0.5],[3,0.4],[4,0.8]],
+ revia:[[2,0.4],[4,0.7]], pashta:[[3,0.4],[4,0.55]], yetiv:[[1,0.4],[0,0.6]],
+ tevir:[[3,0.4],[2,0.4],[1,0.8]], geresh:[[4,0.4],[3,0.5]], 'geresh-muqdam':[[4,0.4],[3,0.5]],
+ gershayim:[[4,0.35],[3,0.35],[4,0.35],[3,0.5]], pazer:[[3,0.3],[4,0.3],[3,0.3],[2,0.5]],
+ 'telisha-gedola':[[4,0.4],[3,0.25],[4,0.35]], 'qarne-para':[[3,0.3],[4,0.3],[3,0.3],[4,0.3],[2,0.5]],
+ zarqa:[[2,0.33],[4,0.33],[3,0.5]], segol:[[3,0.4],[2,0.4],[3,0.5]],
+ shalshelet:[[3,0.3],[4,0.3],[3,0.3],[4,0.3],[3,0.3],[0,1.0]],
+ 'yerach-ben-yomo':[[0,0.4],[2,0.5]], dehi:[[1,0.4],[0,0.5]], zinor:[[2,0.4],[4,0.5]],
+ sof:[[1,0.5],[0,1.6]] };
+const SCALE=[0,2,3,5,7,8,10];
+function degToFreq(tonic,d){ const i=((d%7)+7)%7, oct=Math.floor(d/7), midi=tonic+12*oct+SCALE[i];
+  return 440*Math.pow(2,(midi-69)/12); }
+function stripCons(s){ let o=''; for(const ch of s){ const c=ch.codePointAt(0); if(c>=0x05D0&&c<=0x05EA)o+=ch; } return o; }
+function teamOf(s){ let nm=null; for(const ch of s){ const cp=ch.codePointAt(0); if(TEAM_NAMES[cp])nm=TEAM_NAMES[cp]; } return nm; }
+function alignVerse(vi){
+  const V=VERSES[vi], words=V.he.split(' '), teams=new Array(words.length).fill('conj');
+  const T=window.TROPE&&window.TROPE[BOOKS[V.b].id];
+  const acc=T&&T[V.c-1]&&T[V.c-1][V.v-1];
+  if(acc){
+    const toks=acc.replace(/[׀׃ֽ]/g,'').split(/\s+/).filter(Boolean), parts=[];
+    for(const tk of toks){ for(const sub of tk.split('־')){ const cons=stripCons(sub); if(cons) parts.push({cons,team:teamOf(sub)}); } }
+    let pi=0;
+    for(let j=0;j<words.length;j++){ const wc=stripCons(words[j]); let found=-1;
+      for(let k=pi,s=0;s<4&&k<parts.length;s++,k++){ if(parts[k].cons===wc){found=k;break;} }
+      if(found>=0){ teams[j]=parts[found].team||'conj'; pi=found+1; }
+      else if(pi<parts.length){ teams[j]=parts[pi].team||'conj'; pi++; }
+    }
+  }
+  return {words,teams};
+}
+const HAS_TONE=(typeof Tone!=='undefined');
+let auMaster=null, auSynth=null, auExtra=null;
+function voiceTonic(v){ return v==='shofar'?50 : (v==='bell'||v==='flute')?62 : 57; }
+function buildSynth(voice){
+  if(!HAS_TONE) return null;
+  if(!auMaster) auMaster=new Tone.Volume(state.auVol!=null?state.auVol:-6).toDestination();
+  if(auSynth){ try{auSynth.dispose();}catch(e){} } if(auExtra){ try{auExtra.dispose();}catch(e){} auExtra=null; }
+  let s;
+  if(voice==='reed') s=new Tone.Synth({oscillator:{type:'sawtooth'},envelope:{attack:0.03,decay:0.1,sustain:0.6,release:0.2}});
+  else if(voice==='flute') s=new Tone.Synth({oscillator:{type:'sine'},envelope:{attack:0.05,decay:0.12,sustain:0.7,release:0.3}});
+  else if(voice==='strings') s=new Tone.AMSynth({harmonicity:2,envelope:{attack:0.16,decay:0.2,sustain:0.8,release:0.5}});
+  else if(voice==='bell') s=new Tone.FMSynth({harmonicity:3,modulationIndex:9,envelope:{attack:0.005,decay:0.5,sustain:0,release:0.5}});
+  else if(voice==='shofar') s=new Tone.MonoSynth({oscillator:{type:'sawtooth'},filter:{Q:2,type:'lowpass'},envelope:{attack:0.08,decay:0.2,sustain:0.7,release:0.45},filterEnvelope:{attack:0.12,baseFrequency:180,octaves:3}});
+  else { s=new Tone.Synth({oscillator:{type:'triangle'},envelope:{attack:0.04,decay:0.1,sustain:0.7,release:0.25}});
+    auExtra=new Tone.Vibrato(5,0.12); s.connect(auExtra); auExtra.connect(auMaster); auSynth=s; return s; }
+  s.connect(auMaster); auSynth=s; return s;
+}
+const chant={playing:false,token:0};
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function chantHighlight(wid){
+  const body=$('reader-body'); if(body){ body.querySelectorAll('.rw.rwhot').forEach(e=>e.classList.remove('rwhot'));
+    const sp=body.querySelector('.rw[data-wid="'+wid+'"]'); if(sp){ sp.classList.add('rwhot'); sp.scrollIntoView({block:'nearest'}); } }
+  const sA=geom.attributes.aSel.array;
+  for(let k=0;k<N;k++){ if(!state.books.has(pBook[k])){sA[k]=-1;continue;} sA[k]=(pWid[k]===wid)?1:0; }
+  geom.attributes.aSel.needsUpdate=true;
+}
+function stopChant(){ chant.playing=false; chant.token++;
+  const pb=$('au-play'); if(pb){pb.classList.remove('on');pb.textContent='▶ Chant';}
+  const an=$('au-now'); if(an)an.textContent='';
+  const body=$('reader-body'); if(body) body.querySelectorAll('.rw.rwhot').forEach(e=>e.classList.remove('rwhot'));
+  applySelection();
+}
+async function chantFrom(vi,wj){
+  if(!HAS_TONE){ $('au-now').textContent='audio unavailable'; return; }
+  if(chant.playing){ stopChant(); await sleep(50); }
+  try{ await Tone.start(); }catch(e){}
+  buildSynth(state.auVoice||'cantor');
+  chant.playing=true; const tok=++chant.token;
+  const pb=$('au-play'); pb.classList.add('on'); pb.textContent='⏸ Pause';
+  const sync=$('au-sync').checked, loop=$('au-loop').checked, startBook=VERSES[vi].b;
+  for(let i=vi;i<VERSES.length;i++){
+    if(tok!==chant.token) break;
+    const V=VERSES[i]; if(!state.books.has(V.b)) continue;
+    if(!loop && V.b!==startBook) break;
+    const {words,teams}=alignVerse(i), startWid=pWid[V.gi];
+    if(sync){ const rv=$('reader-body').querySelector('.rv[data-vi="'+i+'"]'); if(rv) rv.scrollIntoView({block:'center',behavior:'smooth'}); }
+    $('au-now').textContent=BOOK_SHORT[V.b]+' '+V.c+':'+V.v;
+    for(let j=(i===vi?wj:0);j<words.length;j++){
+      if(tok!==chant.token) break;
+      const last=(j===words.length-1); let motif=last?MOTIF.sof:(MOTIF[teams[j]]||MOTIF.conj);
+      const beat=60/(state.auTempo||55), tonic=voiceTonic(state.auVoice), t0=Tone.now()+0.03; let cum=0;
+      for(const m of motif){ const f=degToFreq(tonic,m[0]); try{auSynth.triggerAttackRelease(f,Math.max(0.12,m[1]*beat*0.9),t0+cum);}catch(e){} cum+=m[1]*beat; }
+      if(sync) chantHighlight(startWid+j);
+      await sleep(cum*1000);
+    }
+  }
+  if(tok===chant.token) stopChant();
+}
+function verseIndexOf(b,c,v){ for(let i=0;i<VERSES.length;i++){const V=VERSES[i]; if(V.b===b&&V.c===c&&V.v===v)return i;} return -1; }
+$('au-play').addEventListener('click',()=>{
+  if(chant.playing){ stopChant(); return; }
+  let vi=-1,wj=0;
+  if(typeof focusK!=='undefined' && focusK>=0){ const idx=verseIndexOf(pBook[focusK],pChap[focusK],pVerse[focusK]);
+    if(idx>=0){ vi=idx; wj=Math.max(0,pWid[focusK]-pWid[VERSES[idx].gi]); } }
+  if(vi<0) vi=VERSES.findIndex(V=>state.books.has(V.b));
+  if(vi<0) vi=0;
+  chantFrom(vi,wj);
+});
+$('au-stop').addEventListener('click',stopChant);
+$('au-voice').addEventListener('change',e=>{ state.auVoice=e.target.value; if(chant.playing) buildSynth(state.auVoice); });
+bindRange('s-tempo','v-tempo',v=>String(parseInt(v)),v=>{state.auTempo=v;});
+bindRange('s-vol','v-vol',v=>parseInt(v)+' dB',v=>{state.auVol=v; if(auMaster) auMaster.volume.value=v;});
+/* click a word in the reader → chant from there */
+$('reader-body').addEventListener('click',e=>{
+  const sp=e.target.closest('.rw'); if(!sp) return;
+  const s=window.getSelection(); if(s && !s.isCollapsed) return;
+  const rv=sp.closest('.rv'); if(!rv) return; const vi=+rv.dataset.vi;
+  const wj=Math.max(0,(+sp.dataset.wid)-pWid[VERSES[vi].gi]);
+  chantFrom(vi,wj);
+});
+
 function setSeg(id,attr,val){ const el=$(id); if(!el)return; el.querySelectorAll('button').forEach(b=>b.classList.toggle('on', b.dataset[attr]===String(val))); }
 function syncUI(){
   setSeg('seg-mode','m',state.mode); setSeg('seg-layout','l',state.layout); setSeg('seg-gran','g',state.gran);
@@ -1516,6 +1795,8 @@ addEventListener('resize',()=>{
   renderer.setSize(innerWidth,innerHeight);
   if(composer) composer.setSize(innerWidth,innerHeight);
   if(bloomPass) bloomPass.setSize(innerWidth,innerHeight);
+  if(ssaoPass) ssaoPass.setSize(innerWidth,innerHeight);
+  if(bokehPass) bokehPass.setSize(innerWidth,innerHeight);
   drawLegend();
 });
 let introT=REDUCED?1:0;
@@ -1533,16 +1814,19 @@ function animate(){
   }
   else if((Math.abs(velT)>0.0001||Math.abs(velP)>0.0001) && !mode){   /* orbit inertia */
     sph.theta+=velT; sph.phi+=velP; velT*=0.92; velP*=0.92; applyCam(); }
+  else if(state.spin){ sph.theta+=0.0016*(state.spinSpeed||1); applyCam(); }
   else if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
   updateLabels();
+  if(bokehPass&&bokehPass.enabled&&bokehPass.uniforms&&bokehPass.uniforms.focus){
+    bokehPass.uniforms.focus.value=Math.max(10,camera.position.distanceTo(target)); }
   bgMesh.position.copy(camera.position); bgU.uTime.value=u.uTime.value;
   if(composer) composer.render(); else renderer.render(scene,camera);
 }
 
 /* ===== v2.0 · draggable, persistent panels ===== */
 const PANELS=[['title','Torah'],['modes','Layout'],['search','Search'],['reader','Text'],
-  ['ctrl','Controls'],['stats','Stats'],['focus','Word']];
+  ['ctrl','Controls'],['stats','Stats'],['focus','Word'],['audio','Audio']];
 function savePos(id,l,t){ try{const m=JSON.parse(localStorage.getItem('ttp_pos')||'{}'); m[id]={l,t}; localStorage.setItem('ttp_pos',JSON.stringify(m));}catch(e){} }
 function loadPos(){ try{return JSON.parse(localStorage.getItem('ttp_pos')||'{}');}catch(e){return {};} }
 function resetLayout(){ PANELS.forEach(([id])=>{const el=$(id); if(el){el.style.left=el.style.top=el.style.right=el.style.bottom=el.style.transform='';}}); try{localStorage.removeItem('ttp_pos');}catch(e){} }
@@ -1578,7 +1862,9 @@ const THEMES={
   cosmos:     {light:false,ramp:'dark', fog:0x0a0c1c, style:1, top:0x0f1230, bot:0x04050c, tint:0x5666dd, bloom:0.60, expo:1.0},
   aurora:     {light:false,ramp:'dark', fog:0x06181c, style:2, top:0x06222a, bot:0x020a12, tint:0x36c088, bloom:0.60, expo:1.0},
   psychedelic:{light:false,ramp:'dark', fog:0x140a24, style:4, top:0x1a0730, bot:0x09031b, tint:0xccccee, bloom:0.72, expo:1.02},
-  fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0x8a3a0c, bot:0x070200, tint:0xcc7a2a, bloom:0.72, expo:1.02}
+  fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0x8a3a0c, bot:0x070200, tint:0xcc7a2a, bloom:0.72, expo:1.02},
+  ocean:      {light:false,ramp:'dark', fog:0x03141c, style:5, top:0x0a3550, bot:0x010810, tint:0x33b0d8, bloom:0.58, expo:1.0},
+  royal:      {light:false,ramp:'dark', fog:0x130d04, style:6, top:0x2a1d56, bot:0x0a0612, tint:0xe6b84a, bloom:0.62, expo:1.0}
 };
 function applyTheme(t){
   const cfg=THEMES[t]||THEMES.dark; state.theme=t;
