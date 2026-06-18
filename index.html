@@ -1201,10 +1201,11 @@ function recompute(){
     const h = hv*HEIGHT_MAX*state.exag;
     let X,Y,Z;
     if(m==='spiral'){
-      /* wind letters in reading order WITH word gaps, on a roomy coil so words stay legible */
-      const TURNS=240, s=readCoord[k];
-      const ang=s*(Math.PI*2*TURNS/readTotal), R=Math.max(150, readTotal/(Math.PI*2*TURNS))+h*1.4;
-      X=Math.cos(ang)*R; Y=(s/readTotal-0.5)*SPIR_H*1.5; Z=Math.sin(ang)*R;
+      /* wind letters in reading order WITH word gaps, on a roomy coil so words stay legible.
+         SPREAD>1 widens the arc each letter occupies, so letters within a word sit further apart. */
+      const TURNS=240, SPREAD=1.7, s=readCoord[k];
+      const ang=s*(Math.PI*2*TURNS/readTotal), R=Math.max(150, readTotal/(Math.PI*2*TURNS)*SPREAD)+h*1.4;
+      X=Math.cos(ang)*R; Y=(s/readTotal-0.5)*SPIR_H*1.6; Z=Math.sin(ang)*R;
     } else if(m==='sphere'){
       const s=letBase[b]+bookLetter[k];
       const yy=1-2*((s+0.5)/totalLet), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
