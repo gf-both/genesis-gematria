@@ -81,6 +81,8 @@
   .dh-c:hover{color:var(--gold)}
   .panel.collapsed>:not(.dh){display:none!important}
   .panel.collapsed{width:auto!important;min-width:0}
+  #focus.collapsed>:not(.dh){display:none!important}
+  #focus.collapsed{width:auto!important;min-width:0}
   #axes{margin-top:10px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
   #ctrl .dh{position:sticky;top:-2px;z-index:3;padding-top:6px;margin-top:-6px;
     background:linear-gradient(rgba(12,14,22,.92),rgba(12,14,22,.55))}
@@ -330,7 +332,8 @@
   <div id="au-now" style="margin-top:7px;font-size:11px;opacity:.8;min-height:14px"></div>
   <div class="row" style="margin-top:9px;margin-bottom:4px"><span>Voice</span></div>
   <select id="au-voice" style="width:100%">
-    <option value="cantor">Cantor (voice)</option>
+    <option value="words" selected>Hebrew words (spoken)</option>
+    <option value="cantor">Cantor (synth)</option>
     <option value="reed">Reed</option>
     <option value="flute">Flute</option>
     <option value="strings">Strings</option>
@@ -1005,7 +1008,7 @@ function recompute(){
     const h = hv*HEIGHT_MAX*state.exag;
     let X,Y,Z;
     if(m==='spiral'){
-      const s=wordMode ? (str?(wordBase[b]+bookWord[k]):bookWord[k]) : (str?(letBase[b]+bookLetter[k]):bookLetter[k]);
+      const s=wordMode ? (wordBase[b]+bookWord[k]) : (str?(letBase[b]+bookLetter[k]):bookLetter[k]);
       const tot=wordMode?totalWord:totalLet, da=wordMode?SPIR_DAW:SPIR_DA;
       const ang=s*da, R=SPIR_R+h*1.4;
       X=Math.cos(ang)*R; Y=(s/tot-0.5)*SPIR_H; Z=Math.sin(ang)*R;
@@ -1015,11 +1018,17 @@ function recompute(){
       const yy=1-2*((s+0.5)/tot), rr=Math.sqrt(Math.max(0,1-yy*yy)), ph=GA*s, R=SPHERE_R+h*1.7;
       X=Math.cos(ph)*rr*R; Y=yy*R; Z=Math.sin(ph)*rr*R;
     } else if(m==='scroll'){
-      const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
-      const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
-      const xoff = str ? 0 : fixedScrX[b];
-      X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
-    } else {
+      if(wordMode){   /* wrap by WORD sequence → one dot per word */
+        const sW=wordBase[b]+bookWord[k], wPerCol=SCROLL_W*SCROLL_H;
+        const K=Math.floor(sW/wPerCol), rem=sW%wPerCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
+        X=-cc-K*(SCROLL_W+SCROLL_COLGAP); Y=-l; Z=h;
+      } else {
+        const sIdx = str ? (letBase[b]+bookLetter[k]) : bookLetter[k];
+        const K=Math.floor(sIdx/perCol), rem=sIdx%perCol, l=Math.floor(rem/SCROLL_W), cc=rem%SCROLL_W;
+        const xoff = str ? 0 : fixedScrX[b];
+        X=-cc-K*(SCROLL_W+SCROLL_COLGAP)-xoff; Y=-l; Z=h;
+      }
+    } else {   /* terrain: verse lines; word mode keeps one dot per word along each line */
       if(str){ X=-xInLine[k]; Y=-(lineBase[b]+bookLine[k]); }
       else { X=-xInLine[k]-b*terGapFixed; Y=-bookLine[k]; }
       Z=h;
@@ -1669,21 +1678,38 @@ function degToFreq(tonic,d){ const i=((d%7)+7)%7, oct=Math.floor(d/7), midi=toni
 function stripCons(s){ let o=''; for(const ch of s){ const c=ch.codePointAt(0); if(c>=0x05D0&&c<=0x05EA)o+=ch; } return o; }
 function teamOf(s){ let nm=null; for(const ch of s){ const cp=ch.codePointAt(0); if(TEAM_NAMES[cp])nm=TEAM_NAMES[cp]; } return nm; }
 function alignVerse(vi){
-  const V=VERSES[vi], words=V.he.split(' '), teams=new Array(words.length).fill('conj');
+  const V=VERSES[vi], words=V.he.split(' '), teams=new Array(words.length).fill('conj'), accs=new Array(words.length).fill('');
   const T=window.TROPE&&window.TROPE[BOOKS[V.b].id];
   const acc=T&&T[V.c-1]&&T[V.c-1][V.v-1];
   if(acc){
-    const toks=acc.replace(/[׀׃ֽ]/g,'').split(/\s+/).filter(Boolean), parts=[];
-    for(const tk of toks){ for(const sub of tk.split('־')){ const cons=stripCons(sub); if(cons) parts.push({cons,team:teamOf(sub)}); } }
+    const toks=acc.replace(/[׀׃]/g,'').split(/\s+/).filter(Boolean), parts=[];
+    for(const tk of toks){ for(const sub of tk.split('־')){ const cons=stripCons(sub); if(cons) parts.push({cons,team:teamOf(sub),raw:sub}); } }
     let pi=0;
     for(let j=0;j<words.length;j++){ const wc=stripCons(words[j]); let found=-1;
       for(let k=pi,s=0;s<4&&k<parts.length;s++,k++){ if(parts[k].cons===wc){found=k;break;} }
-      if(found>=0){ teams[j]=parts[found].team||'conj'; pi=found+1; }
-      else if(pi<parts.length){ teams[j]=parts[pi].team||'conj'; pi++; }
+      if(found>=0){ teams[j]=parts[found].team||'conj'; accs[j]=parts[found].raw; pi=found+1; }
+      else if(pi<parts.length){ teams[j]=parts[pi].team||'conj'; accs[j]=parts[pi].raw; pi++; }
     }
   }
-  return {words,teams};
+  return {words,teams,accs};
 }
+/* spoken Hebrew (browser speech synthesis) — pronounces the actual voweled words */
+const HAS_SPEECH=(typeof speechSynthesis!=='undefined' && typeof SpeechSynthesisUtterance!=='undefined');
+let heVoice=null;
+function pickHeVoice(){ if(!HAS_SPEECH) return null; const vs=speechSynthesis.getVoices()||[];
+  heVoice = vs.find(v=>/he|iw/i.test(v.lang)) || vs.find(v=>/hebrew|carmit/i.test(v.name)) || null; return heVoice; }
+if(HAS_SPEECH){ pickHeVoice(); try{ speechSynthesis.onvoiceschanged=pickHeVoice; }catch(e){} }
+function stripTeam(s){ return (s||'').replace(/[֑-֯]/g,''); }  /* keep niqqud, drop cantillation marks */
+function speakWord(text, pitch, rate){ return new Promise(res=>{
+  if(!HAS_SPEECH || !text){ res(); return; }
+  const u=new SpeechSynthesisUtterance(text);
+  if(heVoice){ u.voice=heVoice; u.lang=heVoice.lang; } else u.lang='he-IL';
+  u.pitch=Math.max(0,Math.min(2,pitch)); u.rate=Math.max(0.4,Math.min(1.6,rate)); u.volume=1;
+  let done=false; const fin=()=>{ if(done)return; done=true; res(); };
+  u.onend=fin; u.onerror=fin;
+  speechSynthesis.speak(u);
+  setTimeout(fin, 4200);   /* safety: never hang if onend doesn't fire */
+}); }
 const HAS_TONE=(typeof Tone!=='undefined');
 let auMaster=null, auSynth=null, auExtra=null;
 function voiceTonic(v){ return v==='shofar'?50 : (v==='bell'||v==='flute')?62 : 57; }
@@ -1713,14 +1739,19 @@ function chantHighlight(wid){
 function stopChant(){ chant.playing=false; chant.token++;
   const pb=$('au-play'); if(pb){pb.classList.remove('on');pb.textContent='▶ Chant';}
   const an=$('au-now'); if(an)an.textContent='';
+  if(HAS_SPEECH){ try{speechSynthesis.cancel();}catch(e){} }
   const body=$('reader-body'); if(body) body.querySelectorAll('.rw.rwhot').forEach(e=>e.classList.remove('rwhot'));
   applySelection();
 }
+function curVoice(){ return state.auVoice || ($('au-voice')&&$('au-voice').value) || 'words'; }
+function motifAvg(motif){ let s=0; for(const m of motif) s+=m[0]; return s/Math.max(1,motif.length); }
 async function chantFrom(vi,wj){
-  if(!HAS_TONE){ $('au-now').textContent='audio unavailable'; return; }
-  if(chant.playing){ stopChant(); await sleep(50); }
-  try{ await Tone.start(); }catch(e){}
-  buildSynth(state.auVoice||'cantor');
+  const voice=curVoice(), useSpeech=(voice==='words');
+  if(useSpeech && !HAS_SPEECH){ $('au-now').textContent='browser speech unavailable — pick another voice'; return; }
+  if(!useSpeech && !HAS_TONE){ $('au-now').textContent='audio unavailable'; return; }
+  if(chant.playing){ stopChant(); await sleep(60); }
+  if(useSpeech){ pickHeVoice(); try{speechSynthesis.cancel();}catch(e){} }
+  else { try{ await Tone.start(); }catch(e){} buildSynth(voice); }
   chant.playing=true; const tok=++chant.token;
   const pb=$('au-play'); pb.classList.add('on'); pb.textContent='⏸ Pause';
   const sync=$('au-sync').checked, loop=$('au-loop').checked, startBook=VERSES[vi].b;
@@ -1728,16 +1759,24 @@ async function chantFrom(vi,wj){
     if(tok!==chant.token) break;
     const V=VERSES[i]; if(!state.books.has(V.b)) continue;
     if(!loop && V.b!==startBook) break;
-    const {words,teams}=alignVerse(i), startWid=pWid[V.gi];
+    const {words,teams,accs}=alignVerse(i), startWid=pWid[V.gi];
     if(sync){ const rv=$('reader-body').querySelector('.rv[data-vi="'+i+'"]'); if(rv) rv.scrollIntoView({block:'center',behavior:'smooth'}); }
     $('au-now').textContent=BOOK_SHORT[V.b]+' '+V.c+':'+V.v;
     for(let j=(i===vi?wj:0);j<words.length;j++){
       if(tok!==chant.token) break;
       const last=(j===words.length-1); let motif=last?MOTIF.sof:(MOTIF[teams[j]]||MOTIF.conj);
-      const beat=60/(state.auTempo||55), tonic=voiceTonic(state.auVoice), t0=Tone.now()+0.03; let cum=0;
-      for(const m of motif){ const f=degToFreq(tonic,m[0]); try{auSynth.triggerAttackRelease(f,Math.max(0.12,m[1]*beat*0.9),t0+cum);}catch(e){} cum+=m[1]*beat; }
       if(sync) chantHighlight(startWid+j);
-      await sleep(cum*1000);
+      if(useSpeech){
+        const txt=stripTeam(accs[j]) || words[j];
+        const rate=Math.max(0.5,Math.min(1.3,(state.auTempo||55)/60));
+        const pitch=1+motifAvg(motif)*0.06 + (last?-0.12:0);   /* contour follows the te'am */
+        await speakWord(txt,pitch,rate);
+        if(last) await sleep(220*60/(state.auTempo||55));
+      } else {
+        const beat=60/(state.auTempo||55), tonic=voiceTonic(voice), t0=Tone.now()+0.03; let cum=0;
+        for(const m of motif){ const f=degToFreq(tonic,m[0]); try{auSynth.triggerAttackRelease(f,Math.max(0.12,m[1]*beat*0.9),t0+cum);}catch(e){} cum+=m[1]*beat; }
+        await sleep(cum*1000);
+      }
     }
   }
   if(tok===chant.token) stopChant();
@@ -1753,7 +1792,8 @@ $('au-play').addEventListener('click',()=>{
   chantFrom(vi,wj);
 });
 $('au-stop').addEventListener('click',stopChant);
-$('au-voice').addEventListener('change',e=>{ state.auVoice=e.target.value; if(chant.playing) buildSynth(state.auVoice); });
+$('au-voice').addEventListener('change',e=>{ state.auVoice=e.target.value;
+  if(chant.playing && state.auVoice!=='words'){ try{speechSynthesis.cancel();}catch(_){} buildSynth(state.auVoice); } });
 bindRange('s-tempo','v-tempo',v=>String(parseInt(v)),v=>{state.auTempo=v;});
 bindRange('s-vol','v-vol',v=>parseInt(v)+' dB',v=>{state.auVol=v; if(auMaster) auMaster.volume.value=v;});
 /* click a word in the reader → chant from there */
@@ -1859,8 +1899,8 @@ function makeDraggable(id,label){
 const THEMES={
   dark:       {light:false,ramp:'dark', fog:0x06070d, style:0, top:0x080a14, bot:0x04050b, tint:0x7088dd, bloom:0.45, expo:0.92},
   light:      {light:true, ramp:'light',fog:0xece6d8, style:0, top:0xece6d8, bot:0xe2dbc8, tint:0xffffff, bloom:0.05, expo:0.95},
-  cosmos:     {light:false,ramp:'dark', fog:0x0a0c1c, style:1, top:0x0f1230, bot:0x04050c, tint:0x5666dd, bloom:0.60, expo:1.0},
-  aurora:     {light:false,ramp:'dark', fog:0x06181c, style:2, top:0x06222a, bot:0x020a12, tint:0x36c088, bloom:0.60, expo:1.0},
+  cosmos:     {light:false,ramp:'dark', fog:0x0c0f24, style:1, top:0x161b46, bot:0x06070f, tint:0x6a7cff, bloom:0.95, expo:1.18},
+  aurora:     {light:false,ramp:'dark', fog:0x07212a, style:2, top:0x0b3540, bot:0x030d16, tint:0x46e0a4, bloom:0.95, expo:1.18},
   psychedelic:{light:false,ramp:'dark', fog:0x140a24, style:4, top:0x1a0730, bot:0x09031b, tint:0xccccee, bloom:0.72, expo:1.02},
   fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0x8a3a0c, bot:0x070200, tint:0xcc7a2a, bloom:0.72, expo:1.02},
   ocean:      {light:false,ramp:'dark', fog:0x03141c, style:5, top:0x0a3550, bot:0x010810, tint:0x33b0d8, bloom:0.58, expo:1.0},
@@ -1877,7 +1917,9 @@ function applyTheme(t){
   // engine: tone mapping + bloom per theme
   renderer.toneMapping = cfg.light?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=cfg.expo;
-  if(bloomPass){ bloomPass.strength=(state.bloom!=null?state.bloom:1)*cfg.bloom; }
+  // reset Glow to each theme's full default when switching themes
+  state.bloom=1; const gs=$('s-glow'); if(gs){ gs.value=1; } const gv=$('v-glow'); if(gv){ gv.textContent='1.00×'; }
+  if(bloomPass){ bloomPass.strength=cfg.bloom; }
   scene.traverse(o=>{ if(o.material&&'needsUpdate' in o.material) o.material.needsUpdate=true; });
   STOPS = cfg.ramp==='light'?STOPS_LIGHT:STOPS_DARK;
   if(material&&material.uniforms.uLight) material.uniforms.uLight.value=cfg.light?1:0;
