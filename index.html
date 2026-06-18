@@ -290,9 +290,24 @@
   #reader.hidden{transform:translateX(115%)}
   #focus{left:auto;right:374px;bottom:auto;top:60px}
   #wordlabels{position:fixed;inset:0;pointer-events:none;z-index:5}
-  .wlab{position:absolute;transform:translate(-50%,-50%);font-family:var(--serif,'Georgia',serif);
-    font-size:15px;color:#fff;text-shadow:0 1px 6px rgba(0,0,0,.9),0 0 10px rgba(0,0,0,.7);white-space:nowrap;direction:rtl}
-  body.light .wlab{color:#3a2410;text-shadow:0 1px 6px rgba(255,255,255,.95)}
+  /* ===== v3.7 · 2D Map heatmap + per-view explanation ===== */
+  #mapview{position:fixed;left:322px;right:0;top:0;bottom:0;z-index:6;display:none;background:#090b11}
+  body.light #mapview{background:#efeadc}
+  #mapcv{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair}
+  #map-tip{position:absolute;pointer-events:none;display:none;background:rgba(10,12,18,.96);
+    border:1px solid var(--panelbrd);border-radius:7px;padding:5px 9px;font-size:11.5px;color:var(--ink);
+    z-index:9;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+  #map-ctl{position:absolute;left:16px;bottom:14px;display:flex;align-items:flex-end;gap:16px;z-index:7}
+  #map-cluster{cursor:pointer;font-size:11px;padding:6px 12px;border-radius:8px;border:1px solid var(--panelbrd);
+    background:rgba(20,22,30,.8);color:var(--ink);backdrop-filter:blur(6px)}
+  #map-cluster.on{background:rgba(227,178,60,.28);border-color:rgba(227,178,60,.6);color:#fff}
+  #map-legwrap{font-size:10px;color:var(--ink);opacity:.85}
+  #map-bar{width:200px;height:11px;border-radius:3px;margin-top:3px;
+    background:linear-gradient(90deg,#2158d6,#7fa8e8,#e9e6cf,#e08a4a,#d62e18)}
+  #map-legrow{display:flex;justify-content:space-between;width:200px;margin-top:2px;font-size:9.5px;opacity:.8}
+  #howinfo{margin-top:9px;font-size:10.7px;line-height:1.5;color:var(--ink);opacity:.72;
+    border-left:2px solid rgba(227,178,60,.4);padding:2px 0 2px 9px}
+  #howinfo b{color:var(--gold,#e3b23c);font-weight:600;opacity:.95}
 </style>
 </head>
 <body>
@@ -321,6 +336,7 @@
     <button data-m="meaning">Topography</button>
     <button data-m="map">Map</button>
   </div>
+  <div id="howinfo"></div>
   <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
   <button id="tour-here" class="act" style="margin-top:6px;width:100%">▶ Fly from here</button>
   <div class="seg" id="seg-tour" style="margin-top:8px">
@@ -346,6 +362,19 @@
   <div class="row" style="margin-top:11px"><span>Camera pins</span><span class="val" id="v-pins">0</span></div>
   <div class="acts" style="margin-top:4px"><button class="act" id="pin-add" style="width:100%">＋ Pin this view</button></div>
   <div id="pin-list" style="margin-top:6px"></div>
+  <div class="row" style="margin-top:12px;margin-bottom:4px"><span>Theme</span></div>
+  <div class="seg" id="seg-theme">
+    <button data-th="dark" class="on">Dark</button>
+    <button data-th="light">Light</button>
+    <button data-th="cosmos">Cosmos</button>
+    <button data-th="aurora">Aurora</button>
+    <button data-th="psychedelic">Psychedelic</button>
+    <button data-th="fire">Fire</button>
+    <button data-th="ocean">Ocean</button>
+    <button data-th="royal">Royal</button>
+  </div>
+  <div class="row" style="margin-top:11px"><span>Glow (bloom)</span><span class="val" id="v-glow">1.0×</span></div>
+  <input type="range" id="s-glow" min="0" max="2.5" step="0.05" value="1">
 </div>
 <div id="search" class="panel">
   <input id="search-in" type="text" autocomplete="off" spellcheck="false"
@@ -440,19 +469,6 @@
       <button data-cb="pos">Part of speech</button>
     </div>
     <div id="poslegend"></div>
-    <div class="row" style="margin-top:11px;margin-bottom:4px"><span>Theme</span></div>
-    <div class="seg" id="seg-theme">
-      <button data-th="dark" class="on">Dark</button>
-      <button data-th="light">Light</button>
-      <button data-th="cosmos">Cosmos</button>
-      <button data-th="aurora">Aurora</button>
-      <button data-th="psychedelic">Psychedelic</button>
-      <button data-th="fire">Fire</button>
-      <button data-th="ocean">Ocean</button>
-      <button data-th="royal">Royal</button>
-    </div>
-    <div class="row" style="margin-top:11px"><span>Glow (bloom)</span><span class="val" id="v-glow">1.0×</span></div>
-    <input type="range" id="s-glow" min="0" max="2.5" step="0.05" value="1">
   </div>
 
   <div class="grp">
@@ -948,6 +964,7 @@ function applyEnrich(){               // re-shape from curve + exaggerate + laye
   }
   pa.needsUpdate=true; ca.needsUpdate=true; enrGeom.computeVertexNormals();
   eBaseCol=Float32Array.from(ca.array);   /* base colours for live chant-row highlight */
+  if(state.mode==='map' && typeof drawMap==='function') drawMap();
 }
 let eBaseCol=null;
 /* highlight the surface row of a global chapter while chanting/selecting in Meaning/Map */
@@ -966,6 +983,98 @@ function enrHighlightChapters(gchList){
   ca.needsUpdate=true;
 }
 function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.attributes.color.array.set(eBaseCol); enrGeom.attributes.color.needsUpdate=true; } }
+
+/* ===== v3.7 · 2D Map = flat diverging heatmap (chapters × letters), top-down analytical view ===== */
+const GCH=[]; (function(){ let g=0; for(let b=0;b<BOOKS.length;b++){ for(let c=0;c<BOOKS[b].chapters.length;c++){ GCH[g]={b,c:c+1}; g++; } } })();
+let mapCanvas=null, mapCtx=null, mapTip=null, mapCluster=false, mapGeom=null;
+(function buildMapView(){
+  const mv=document.createElement('div'); mv.id='mapview';
+  mv.innerHTML='<canvas id="mapcv"></canvas><div id="map-tip"></div>'
+    +'<div id="map-ctl"><button id="map-cluster" title="Group similar chapters & letters">⤧ Cluster</button>'
+    +'<div id="map-legwrap">enrichment vs chance<div id="map-bar"></div>'
+    +'<div id="map-legrow"><span>under</span><span>expected</span><span>over</span></div></div></div>';
+  document.body.appendChild(mv);
+  mapCanvas=document.getElementById('mapcv'); mapCtx=mapCanvas.getContext('2d'); mapTip=document.getElementById('map-tip');
+  document.getElementById('map-cluster').addEventListener('click',e=>{ mapCluster=!mapCluster;
+    e.currentTarget.classList.toggle('on',mapCluster); drawMap(); });
+  mapCanvas.addEventListener('mousemove',onMapHover);
+  mapCanvas.addEventListener('mouseleave',()=>{ if(mapTip)mapTip.style.display='none'; });
+  mapCanvas.addEventListener('click',onMapClick);
+})();
+function mix3(a,b,t){ return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; }
+function divColor(z){            // signed enrichment → diverging blue/pale/red
+  const pale=[0.91,0.90,0.84];
+  if(z>=0){ const t=Math.min(1,z/6); return mix3(pale,[0.86,0.18,0.09],Math.pow(t,0.8)); }
+  const t=Math.min(1,-z/3);       return mix3(pale,[0.13,0.34,0.84],Math.pow(t,0.8));
+}
+function clusterOrder(B,NC,NB,cols){
+  const n=cols?NB:NC; const V=[];
+  for(let i=0;i<n;i++){ const v=new Float64Array(cols?NC:NB);
+    if(cols){ for(let c=0;c<NC;c++) v[c]=B[c][i]; } else { for(let l=0;l<NB;l++) v[l]=B[i][l]; } V.push(v); }
+  const corr=(a,b)=>{ const va=V[a],vb=V[b],L=va.length; let ma=0,mb=0; for(let k=0;k<L;k++){ma+=va[k];mb+=vb[k];} ma/=L;mb/=L;
+    let nu=0,da=0,db=0; for(let k=0;k<L;k++){const xa=va[k]-ma,xb=vb[k]-mb;nu+=xa*xb;da+=xa*xa;db+=xb*xb;} return nu/(Math.sqrt(da*db)||1); };
+  const used=new Array(n).fill(false); let start=0,bv=-1;
+  for(let i=0;i<n;i++){ let m=0;for(const x of V[i])m+=x;m/=V[i].length;let s=0;for(const x of V[i])s+=(x-m)*(x-m); if(s>bv){bv=s;start=i;} }
+  const order=[start]; used[start]=true;
+  for(let s=1;s<n;s++){ const last=order[order.length-1]; let best=-1,bc=-2;
+    for(let i=0;i<n;i++){ if(used[i])continue; const c=corr(last,i); if(c>bc){bc=c;best=i;} }
+    order.push(best); used[best]=true; }
+  return order;
+}
+function mapBuild(){
+  const grid=enrComputeGrid(); const NC=grid.NC, NB=curBins;
+  let rowOrder=[],colOrder=[]; for(let c=0;c<NC;c++)rowOrder.push(c); for(let l=0;l<NB;l++)colOrder.push(l);
+  if(mapCluster){ try{ rowOrder=clusterOrder(grid.Z,NC,NB,false); colOrder=clusterOrder(grid.Z,NC,NB,true); }catch(e){} }
+  return {NC,NB,B:grid.Z,r2gch:grid.r2gch,rowOrder,colOrder};
+}
+function drawMap(){
+  if(!mapCtx || state.mode!=='map') return;
+  const g=mapBuild(); mapGeom=g;
+  const lt=document.body.classList.contains('light');
+  const W=mapCanvas.clientWidth||800, H=mapCanvas.clientHeight||600, dpr=Math.min(2,window.devicePixelRatio||1);
+  mapCanvas.width=W*dpr; mapCanvas.height=H*dpr; mapCtx.setTransform(dpr,0,0,dpr,0,0);
+  mapCtx.clearRect(0,0,W,H);
+  const ink=lt?'#3a2a12':'rgba(235,228,210,.9)';
+  const padL=74, padT=32, padR=24, padB=70;
+  const gw=Math.max(10,W-padL-padR), gh=Math.max(10,H-padT-padB);
+  const cw=gw/g.NB, ch=gh/g.NC;
+  g.padL=padL; g.padT=padT; g.cw=cw; g.ch=ch;
+  for(let ri=0;ri<g.NC;ri++){ const c=g.rowOrder[ri];
+    for(let ci=0;ci<g.NB;ci++){ const l=g.colOrder[ci]; const col=divColor(g.B[c][l]);
+      mapCtx.fillStyle='rgb('+(col[0]*255|0)+','+(col[1]*255|0)+','+(col[2]*255|0)+')';
+      mapCtx.fillRect(padL+ci*cw, padT+ri*ch, cw+0.6, ch+0.6); } }
+  /* left book strip + names */
+  let lastB=-1;
+  for(let ri=0;ri<g.NC;ri++){ const gch=g.r2gch[g.rowOrder[ri]]; if(gch==null||gch<0) continue; const b=GCH[gch].b;
+    const t=BOOK_TINT[b]; mapCtx.fillStyle='rgb('+(t[0]*255|0)+','+(t[1]*255|0)+','+(t[2]*255|0)+')';
+    mapCtx.fillRect(padL-9, padT+ri*ch, 6, ch+0.6); }
+  if(!mapCluster){
+    mapCtx.fillStyle=ink; mapCtx.font='600 11px var(--sans,sans-serif)'; mapCtx.textAlign='right'; mapCtx.textBaseline='middle';
+    const seen={}; for(let ri=0;ri<g.NC;ri++){ const gch=g.r2gch[g.rowOrder[ri]]; if(gch==null||gch<0)continue; const b=GCH[gch].b;
+      if(!(b in seen)){ seen[b]=ri; } seen['_'+b]=ri; }
+    for(const b of Object.keys(seen).filter(k=>!k.startsWith('_'))){ const r0=seen[b], r1=seen['_'+b];
+      const ym=padT+((+r0+ +r1)/2+0.5)*ch; mapCtx.fillText(BOOKS[+b].name.slice(0,5), padL-13, ym); }
+  }
+  /* column (letter) labels */
+  if(cw>=9 && state.gran!=='word'){ mapCtx.fillStyle=ink; mapCtx.font='13px var(--serif,serif)'; mapCtx.textAlign='center'; mapCtx.textBaseline='alphabetic';
+    for(let ci=0;ci<g.NB;ci++){ const l=g.colOrder[ci]; const lab=ALEPHBET[l]?ALEPHBET[l][0]:''; mapCtx.fillText(lab, padL+ci*cw+cw/2, padT-9); } }
+  else if(state.gran==='word'){ mapCtx.fillStyle=ink; mapCtx.font='10px var(--sans,sans-serif)'; mapCtx.textAlign='center';
+    mapCtx.fillText('gematria value bands (low → high) →', padL+gw/2, padT-10); }
+}
+function mapCellAt(e){ const g=mapGeom; if(!g)return null; const r=mapCanvas.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top; const ci=Math.floor((x-g.padL)/g.cw), ri=Math.floor((y-g.padT)/g.ch);
+  if(ci<0||ci>=g.NB||ri<0||ri>=g.NC) return null;
+  const c=g.rowOrder[ri], l=g.colOrder[ci], gch=g.r2gch[c]; if(gch==null||gch<0) return null;
+  return {c,l,gch,x,y,z:g.B[c][l]}; }
+function onMapHover(e){ const cell=mapCellAt(e); if(!cell){ mapTip.style.display='none'; return; }
+  const info=GCH[cell.gch], letter=state.gran==='word'?('band '+(cell.l+1)):(ALEPHBET[cell.l]?ALEPHBET[cell.l][0]:''), rep=repWord(cell.gch,cell.l);
+  mapTip.innerHTML=BOOK_SHORT[info.b]+' '+info.c+' · '+letter+' &nbsp; <b>'+(cell.z>=0?'+':'')+cell.z.toFixed(2)+'σ</b>'+(rep?'<br><span dir="rtl">'+rep+'</span>':'');
+  mapTip.style.display='block';
+  const r=mapCanvas.getBoundingClientRect(); mapTip.style.left=Math.min(r.width-150,cell.x+15)+'px'; mapTip.style.top=(cell.y+12)+'px'; }
+function onMapClick(e){ const cell=mapCellAt(e); if(!cell)return; const info=GCH[cell.gch];
+  const rd=document.getElementById('reader'); if(rd&&rd.classList.contains('hidden')){ rd.classList.remove('hidden'); const tb=document.getElementById('sb-textbtn'); if(tb)tb.classList.add('on'); }
+  if(typeof readerTo==='function') readerTo(info.b,info.c,1); }
+
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
@@ -1411,28 +1520,38 @@ function fitView(m){
 }
 function setMode(m){
   state.mode=m;
-  const meshMode=(m==='meaning'||m==='map');
-  points.visible=!meshMode; enrGroup.visible=meshMode;
+  const surf=(m==='meaning'), mapMode=(m==='map');
+  points.visible=!(surf||mapMode); enrGroup.visible=surf;
+  const mv=document.getElementById('mapview'); if(mv) mv.style.display=mapMode?'block':'none';
   if(typeof updateFX==='function') updateFX();
-  if(meshMode){
+  if(surf){
     basePlane.visible=false; baseEdges.visible=false;
     rebuildEnrich();
     enrGeom.computeBoundingSphere();
     const bs=enrGeom.boundingSphere; target.copy(bs.center);
     sph.r=bs.radius*2.0; scene.fog.density=0.45/Math.max(1,bs.radius);
-    if(m==='map'){ sph.phi=Math.PI/2-0.001; sph.theta=0.0; userMoved=true; }
-    else { sph.phi=0.92; sph.theta=0.62; userMoved=false; }
+    sph.phi=0.92; sph.theta=0.62; userMoved=false;
     applyCam();
+  } else if(mapMode){
+    basePlane.visible=false; baseEdges.visible=false; drawMap();
   } else {
     recompute(); fitPlane(m); fitView(m);
   }
-  setAxes(m);
+  setAxes(m); if(typeof setHowInfo==='function') setHowInfo(m);
 }
 function setAxes(m){ const el=$('axes'); if(!el)return;
   el.textContent=({terrain:'X line · Y verse · Z gematria', scroll:'wrapped scroll · height = gematria',
     sphere:'sphere by sequence · radius = gematria', spiral:'coil by sequence · radius = gematria',
     meaning:'chapter × '+(state.gran==='word'?'value band':'letter')+' · height = enrichment',
-    map:'top-down map · colour = enrichment'})[m]||''; }
+    map:'top-down heatmap · colour = enrichment'})[m]||''; }
+const HOWINFO={
+  terrain:'<b>Terrain</b> — every letter laid out like a page (X = position in line, Y = verse) and raised on Z by its gematria. A literal relief of the text.',
+  scroll:'<b>Scroll</b> — the letters wrapped into continuous columns like a Torah scroll; height = gematria. One long ribbon you read across.',
+  sphere:'<b>Sphere</b> — every letter placed on a globe by its order in the sequence (even Fibonacci spread); radius = gematria. The whole Torah as one orb.',
+  spiral:'<b>Spiral</b> — letters wound onto a vertical coil by sequence; radius = gematria. Use the tour to fly up through the centre.',
+  meaning:'<b>Topography</b> — a statistical landscape: rows = chapters, columns = letters (or value bands). Height = <b>enrichment</b> (how over/under-represented each is vs chance). Peaks = excess, valleys = scarcity.',
+  map:'<b>Map</b> — the same chapter×letter enrichment as a flat heatmap. <b>Red</b> = over-represented, <b>blue</b> = under. Hover a cell for its word & value; click to jump the Text panel there; toggle Cluster to group similar chapters/letters.'};
+function setHowInfo(m){ const el=document.getElementById('howinfo'); if(el) el.innerHTML=HOWINFO[m]||''; }
 let userMoved=false;
 const dom=renderer.domElement;
 const ptr=new Map(); let mode=null, last={x:0,y:0}, pinch=0;
@@ -1886,6 +2005,7 @@ addEventListener('resize',()=>{
   if(ssaoPass) ssaoPass.setSize(innerWidth,innerHeight);
   if(bokehPass) bokehPass.setSize(innerWidth,innerHeight);
   drawLegend();
+  if(state.mode==='map' && typeof drawMap==='function') drawMap();
 });
 let introT=REDUCED?1:0;
 function animate(){
