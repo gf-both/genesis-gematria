@@ -858,14 +858,15 @@ function enrComputeGrid(){            // enrichment z over chapters of the SELEC
   for(let c=0;c<NC;c++){ if(emptyRow[c])continue; for(let l=0;l<NB;l++){if(B[c][l]<mn)mn=B[c][l];if(B[c][l]>mx)mx=B[c][l];} }
   if(mn>mx){mn=0;mx=1;}
   for(let c=0;c<NC;c++) if(emptyRow[c]) for(let l=0;l<NB;l++) B[c][l]=mn;   // gap rows = valley floor
-  return {NC,Z:B,mn,mx,r2gch};
+  return {NC,Z:B,mn,mx,r2gch,g2r};
 }
+let enrG2R=null;   /* global-chapter → surface row, for audio/selection sync */
 function enrSampleGrid(G,fi,fj,NC){
   const c0=Math.floor(fi),l0=Math.floor(fj),c1=Math.min(c0+1,NC-1),l1=Math.min(l0+1,curBins-1),tc=fi-c0,tl=fj-l0;
   return (G[c0][l0]*(1-tl)+G[c0][l1]*tl)*(1-tc)+(G[c1][l0]*(1-tl)+G[c1][l1]*tl)*tc;
 }
 function rebuildEnrich(){             // rebuild surface geometry for current book selection
-  const grid=enrComputeGrid(); ENR_NC=grid.NC;
+  const grid=enrComputeGrid(); ENR_NC=grid.NC; enrG2R=grid.g2r;
   try{ enrPeaks=computeEnrPeaks(grid); }catch(e){ enrPeaks=[]; }
   ENR_FX=(curBins-1)*SUB+1; ENR_FY=Math.max(2,(grid.NC-1)*SUB+1); const VC=ENR_FX*ENR_FY;
   const pos=new Float32Array(VC*3), col=new Float32Array(VC*3);
@@ -908,7 +909,25 @@ function applyEnrich(){               // re-shape from curve + exaggerate + laye
     ca.array[v*3]=rgb[0]*d; ca.array[v*3+1]=rgb[1]*d; ca.array[v*3+2]=rgb[2]*d;
   }
   pa.needsUpdate=true; ca.needsUpdate=true; enrGeom.computeVertexNormals();
+  eBaseCol=Float32Array.from(ca.array);   /* base colours for live chant-row highlight */
 }
+let eBaseCol=null;
+/* highlight the surface row of a global chapter while chanting/selecting in Meaning/Map */
+function enrHighlightChapter(gch){ enrHighlightChapters(gch==null?[]:[gch]); }
+function enrHighlightChapters(gchList){
+  if(!eBaseCol||!enrG2R||(state.mode!=='meaning'&&state.mode!=='map')) return;
+  const ca=enrGeom.attributes.color; ca.array.set(eBaseCol);
+  for(const gch of gchList){ const row=(gch!=null&&gch>=0)?enrG2R[gch]:-1; if(row<0) continue;
+    const ci=row/Math.max(1,ENR_NC-1)*(ENR_FY-1);
+    for(let i=0;i<ENR_FY;i++){ const d=Math.abs(i-ci); if(d>SUB) continue;
+      const f=1-(d/SUB), boost=1+1.6*f;
+      for(let j=0;j<ENR_FX;j++){ const v=(i*ENR_FX+j)*3;
+        ca.array[v]=Math.min(1,eBaseCol[v]*boost+0.10*f);
+        ca.array[v+1]=Math.min(1,eBaseCol[v+1]*boost+0.07*f);
+        ca.array[v+2]=Math.min(1,eBaseCol[v+2]*boost+0.02*f); } } }
+  ca.needsUpdate=true;
+}
+function enrClearHighlight(){ if(eBaseCol&&enrGeom.attributes.color){ enrGeom.attributes.color.array.set(eBaseCol); enrGeom.attributes.color.needsUpdate=true; } }
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
@@ -1299,6 +1318,7 @@ function clearText(){
   const body=$('reader-body');
   if(body) body.querySelectorAll('.rv.hot').forEach(e=>e.classList.remove('hot'));
   const rc=$('reader-count'); if(rc) rc.textContent='all shown';
+  if(typeof enrClearHighlight==='function') enrClearHighlight();
 }
 
 let selRAF=0;
@@ -1326,6 +1346,7 @@ function mapSelection(){
     let cnt=0; for(let k=0;k<N;k++) cnt+=textMask[k];
     $('reader-count').textContent=cnt.toLocaleString('en-US')+' letters';
     if(state.mode!=='meaning'&&state.mode!=='map'){ const bb=boundsOf(ranges); if(bb) flyTo(bb.cx,bb.cy,bb.cz,bb.r*2.0+70); }
+    else { const gset=new Set(); for(const [a,bb2] of ranges){ for(let k=a;k<bb2;k++) gset.add(pGChap[k]); } enrHighlightChapters([...gset]); }
   }
 }
 $('reader-clear').addEventListener('click',()=>{
@@ -1729,9 +1750,10 @@ function buildSynth(voice){
 }
 const chant={playing:false,token:0};
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-function chantHighlight(wid){
+function chantHighlight(wid,gch){
   const body=$('reader-body'); if(body){ body.querySelectorAll('.rw.rwhot').forEach(e=>e.classList.remove('rwhot'));
     const sp=body.querySelector('.rw[data-wid="'+wid+'"]'); if(sp){ sp.classList.add('rwhot'); sp.scrollIntoView({block:'nearest'}); } }
+  if(state.mode==='meaning'||state.mode==='map'){ enrHighlightChapter(gch); return; }
   const sA=geom.attributes.aSel.array;
   for(let k=0;k<N;k++){ if(!state.books.has(pBook[k])){sA[k]=-1;continue;} sA[k]=(pWid[k]===wid)?1:0; }
   geom.attributes.aSel.needsUpdate=true;
@@ -1741,7 +1763,7 @@ function stopChant(){ chant.playing=false; chant.token++;
   const an=$('au-now'); if(an)an.textContent='';
   if(HAS_SPEECH){ try{speechSynthesis.cancel();}catch(e){} }
   const body=$('reader-body'); if(body) body.querySelectorAll('.rw.rwhot').forEach(e=>e.classList.remove('rwhot'));
-  applySelection();
+  if(state.mode==='meaning'||state.mode==='map') enrClearHighlight(); else applySelection();
 }
 function curVoice(){ return state.auVoice || ($('au-voice')&&$('au-voice').value) || 'words'; }
 function motifAvg(motif){ let s=0; for(const m of motif) s+=m[0]; return s/Math.max(1,motif.length); }
@@ -1759,13 +1781,13 @@ async function chantFrom(vi,wj){
     if(tok!==chant.token) break;
     const V=VERSES[i]; if(!state.books.has(V.b)) continue;
     if(!loop && V.b!==startBook) break;
-    const {words,teams,accs}=alignVerse(i), startWid=pWid[V.gi];
+    const {words,teams,accs}=alignVerse(i), startWid=pWid[V.gi], vgch=pGChap[V.gi];
     if(sync){ const rv=$('reader-body').querySelector('.rv[data-vi="'+i+'"]'); if(rv) rv.scrollIntoView({block:'center',behavior:'smooth'}); }
     $('au-now').textContent=BOOK_SHORT[V.b]+' '+V.c+':'+V.v;
     for(let j=(i===vi?wj:0);j<words.length;j++){
       if(tok!==chant.token) break;
       const last=(j===words.length-1); let motif=last?MOTIF.sof:(MOTIF[teams[j]]||MOTIF.conj);
-      if(sync) chantHighlight(startWid+j);
+      if(sync) chantHighlight(startWid+j,vgch);
       if(useSpeech){
         const txt=stripTeam(accs[j]) || words[j];
         const rate=Math.max(0.5,Math.min(1.3,(state.auTempo||55)/60));
