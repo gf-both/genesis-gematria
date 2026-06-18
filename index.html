@@ -1288,7 +1288,8 @@ document.querySelectorAll('#seg-render button').forEach(b=>b.addEventListener('c
 document.querySelectorAll('#seg-gran button').forEach(b=>b.addEventListener('click',()=>{
   document.querySelectorAll('#seg-gran button').forEach(x=>x.classList.remove('on'));
   b.classList.add('on'); state.gran=b.dataset.g;
-  if(state.mode==='meaning'||state.mode==='map') rebuildEnrich(); else recompute();
+  if(state.mode==='meaning'||state.mode==='map') rebuildEnrich();
+  else { recompute(); fitView(state.mode); }   /* refit: word vs letter layouts differ in scale/extent */
   drawLegend();
 }));
 
