@@ -273,6 +273,7 @@
     <button data-m="map">Map</button>
   </div>
   <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
+  <button id="tour-here" class="act" style="margin-top:6px;width:100%">▶ Fly from here</button>
   <div class="seg" id="seg-tour" style="margin-top:8px">
     <button data-t="flyby" class="on">Fly-by</button>
     <button data-t="dive">Deep dive</button>
@@ -599,10 +600,10 @@ const bgMat=new THREE.ShaderMaterial({uniforms:bgU,side:THREE.BackSide,depthWrit
     void main(){
       float t=clamp(vDir.y*0.5+0.5,0.0,1.0);
       vec3 col=mix(uBot,uTop,t);
-      if(uStyle>3.5){ float h=0.5+0.5*sin(uTime*0.06+vDir.x*2.2+vDir.y*1.4); col=mix(col,hue(h)*0.55+0.12,0.6); }
-      else if(uStyle>2.5){ float f=pow(1.0-t,1.4); col=mix(uBot,uTop,f); col+=vec3(0.45,0.14,0.0)*pow(max(0.0,sin(uTime*0.7+vDir.x*3.0))*(1.0-t),2.0); }
-      else if(uStyle>1.5){ float a=0.5+0.5*sin(uTime*0.35+vDir.x*3.0+vDir.y*2.0); col+=uTint*0.20*a*smoothstep(0.15,0.85,t); }
-      else if(uStyle>0.5){ float n=0.5+0.5*sin(vDir.x*9.0)*sin(vDir.y*7.0+uTime*0.12); col+=uTint*0.06*n; }
+      if(uStyle>3.5){ float h=0.5+0.5*sin(uTime*0.06+vDir.x*2.2+vDir.y*1.4); col=mix(col,hue(h)*0.32+0.05,0.40); }
+      else if(uStyle>2.5){ float f=pow(1.0-t,1.5); col=mix(uBot,uTop,f); col+=vec3(0.26,0.08,0.0)*pow(max(0.0,sin(uTime*0.7+vDir.x*3.0))*(1.0-t),2.0); }
+      else if(uStyle>1.5){ float a=0.5+0.5*sin(uTime*0.35+vDir.x*3.0+vDir.y*2.0); col+=uTint*0.12*a*smoothstep(0.15,0.85,t); }
+      else if(uStyle>0.5){ float n=0.5+0.5*sin(vDir.x*9.0)*sin(vDir.y*7.0+uTime*0.12); col+=uTint*0.045*n; }
       gl_FragColor=vec4(col,1.0);
     }`});
 const bgMesh=new THREE.Mesh(new THREE.SphereGeometry(12000,32,16),bgMat);
@@ -801,12 +802,19 @@ function applyEnrich(){               // re-shape from curve + exaggerate + laye
   if(!eRawH) return;
   const pa=enrGeom.attributes.position, ca=enrGeom.attributes.color;
   const lAny=letterCount>0 && state.gran!=='word';   // letter filter only meaningful in letter mode
+  /* Gematria band (Floor/Ceiling + Units/Tens/Hundreds): mask surface columns by value */
+  const lo=state.floor, hi=state.ceil, NB=curBins, bandOn=new Array(NB);
+  for(let b=0;b<NB;b++){ let val;
+    if(state.gran==='word'){ const mx=state.sofit?MAXWsof:MAXW; val=Math.expm1((b+0.5)/WBANDS*Math.log1p(mx)); }
+    else { val=(ALEPHBET[b]?ALEPHBET[b][1]:0); }
+    bandOn[b]=(val>=lo && val<=hi); }
   for(let v=0;v<eRawH.length;v++){
-    const on=!lAny||letterOn[eLet[v]];
+    const bin=eLet[v];
+    const on=(!lAny||letterOn[bin]) && bandOn[bin];
     let h=curveFn(eRawH[v]);
     if(state.layers) h=Math.round(h*(LAYER_BANDS-1))/(LAYER_BANDS-1);
     pa.array[v*3+2]= on ? h*ENR_H*state.exag : 0;
-    const rgb=ramp(on?h:0), d=on?1:0.4;
+    const rgb=ramp(on?h:0), d=on?1:0.35;
     ca.array[v*3]=rgb[0]*d; ca.array[v*3+1]=rgb[1]*d; ca.array[v*3+2]=rgb[2]*d;
   }
   pa.needsUpdate=true; ca.needsUpdate=true; enrGeom.computeVertexNormals();
@@ -862,7 +870,7 @@ function updateLabels(){
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
   books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter',
-  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1};
+  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1, tourFree:false};
 
 function curveFn(v){
   switch(state.curve){
@@ -993,7 +1001,7 @@ function setFloorCeil(){
   // keep floor < ceil
   if(state.floor>=state.ceil){state.floor=state.ceil-1;$('s-floor').value=state.floor;}
   $('v-floor').textContent=state.floor; $('v-ceil').textContent=state.ceil;
-  recompute();
+  if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();
 }
 $('s-floor').addEventListener('input',e=>{state.floor=parseInt(e.target.value);setFloorCeil();});
 $('s-ceil').addEventListener('input',e=>{state.ceil=parseInt(e.target.value);setFloorCeil();});
@@ -1098,7 +1106,11 @@ document.querySelectorAll('#seg-mode button').forEach(b=>b.addEventListener('cli
   b.classList.add('on'); setMode(b.dataset.m);
 }));
 /* fly-through tour toggle */
-$('tour').addEventListener('click',()=>{ state.tour=!state.tour; tween=null; $('tour').classList.toggle('on',state.tour); });
+$('tour').addEventListener('click',()=>{ state.tour=!state.tour; state.tourFree=false; tween=null;
+  $('tour').classList.toggle('on',state.tour); $('tour-here').classList.remove('on'); });
+$('tour-here').addEventListener('click',()=>{ const on=!(state.tour&&state.tourFree);
+  state.tour=on; state.tourFree=on; tween=null; userMoved=true; velT=velP=0;
+  $('tour-here').classList.toggle('on',on); $('tour').classList.remove('on'); });
 
 /* jump-to-reference search */
 const ALIAS={genesis:0,gen:0,bereshit:0,'בראשית':0,exodus:1,exod:1,exo:1,ex:1,shemot:1,'שמות':1,
@@ -1265,11 +1277,18 @@ let userMoved=false;
 const dom=renderer.domElement;
 const ptr=new Map(); let mode=null, last={x:0,y:0}, pinch=0;
 function markUser(){userMoved=true; tween=null; velT=0; velP=0;
-  if(state.tour){ state.tour=false; const tb=document.getElementById('tour'); if(tb)tb.classList.remove('on'); }}
+  if(state.tour){ state.tour=false; state.tourFree=false;
+    const tb=document.getElementById('tour'); if(tb)tb.classList.remove('on');
+    const th=document.getElementById('tour-here'); if(th)th.classList.remove('on'); }}
 /* fly-to (smooth zoom into a section) + auto fly-through tour */
 let tween=null, tourP=0, velT=0, velP=0;   /* velT/velP = orbit inertia */
 function tourStep(){
   const sp=state.tourSpeed||1, dive=(state.tourMode==='dive');
+  if(state.tourFree){                   /* free flight: dolly forward from current pose */
+    const fwd=new THREE.Vector3().subVectors(target,camera.position);
+    if(fwd.lengthSq()<1e-6) fwd.set(0,0,-1); fwd.normalize();
+    target.addScaledVector(fwd,(dive?9:5)*sp);
+    sph.theta+=0.0006*sp; applyCam(); return; }
   if(state.mode==='spiral'){           /* fly up through the centre of the coil */
     geom.computeBoundingBox(); const bb=geom.boundingBox; if(!bb){applyCam();return;}
     tourP+=0.0007*sp; if(tourP>1)tourP=0;
@@ -1444,7 +1463,12 @@ function exportOBJ(){
     if(idx) for(let i=0;i<idx.length;i+=3) lines.push('f '+(idx[i]+1)+' '+(idx[i+1]+1)+' '+(idx[i+2]+1));
   } else {
     const pa=geom.attributes.position.array, sA=geom.attributes.aSel.array;
-    for(let k=0;k<N;k++){ if(sA[k]<-0.5) continue; lines.push('v '+pa[k*3].toFixed(2)+' '+pa[k*3+1].toFixed(2)+' '+pa[k*3+2].toFixed(2)); }
+    let vi=0; const pts=[];
+    for(let k=0;k<N;k++){ if(sA[k]<-0.5) continue;
+      lines.push('v '+pa[k*3].toFixed(2)+' '+pa[k*3+1].toFixed(2)+' '+pa[k*3+2].toFixed(2));
+      vi++; pts.push(vi); }
+    /* point elements so Rhino / 3D apps import the cloud (geometry, not just verts) */
+    for(let i=0;i<pts.length;i++) lines.push('p '+pts[i]);
   }
   const blob=new Blob([lines.join('\n')+'\n'],{type:'text/plain'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
@@ -1549,12 +1573,12 @@ function makeDraggable(id,label){
 /* ---- themes — now drive the in-scene backdrop + bloom + tone mapping ---- */
 /* style: 0 solid · 1 cosmos · 2 aurora · 3 fire · 4 psychedelic */
 const THEMES={
-  dark:       {light:false,ramp:'dark', fog:0x06070d, style:0, top:0x0b0e1a, bot:0x05060d, tint:0x88a0ff, bloom:0.85, expo:1.15},
-  light:      {light:true, ramp:'light',fog:0xece6d8, style:0, top:0xefe9dc, bot:0xe4ddcb, tint:0xffffff, bloom:0.10, expo:1.0},
-  cosmos:     {light:false,ramp:'dark', fog:0x0a0c1c, style:1, top:0x171b40, bot:0x05060f, tint:0x6a7cff, bloom:1.05, expo:1.2},
-  aurora:     {light:false,ramp:'dark', fog:0x06181c, style:2, top:0x0a3038, bot:0x03101a, tint:0x46e6a0, bloom:1.05, expo:1.2},
-  psychedelic:{light:false,ramp:'dark', fog:0x140a24, style:4, top:0x2a0a44, bot:0x0f0426, tint:0xffffff, bloom:1.25, expo:1.25},
-  fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0xff7a1e, bot:0x0c0300, tint:0xffb347, bloom:1.15, expo:1.2}
+  dark:       {light:false,ramp:'dark', fog:0x06070d, style:0, top:0x080a14, bot:0x04050b, tint:0x7088dd, bloom:0.45, expo:0.92},
+  light:      {light:true, ramp:'light',fog:0xece6d8, style:0, top:0xece6d8, bot:0xe2dbc8, tint:0xffffff, bloom:0.05, expo:0.95},
+  cosmos:     {light:false,ramp:'dark', fog:0x0a0c1c, style:1, top:0x0f1230, bot:0x04050c, tint:0x5666dd, bloom:0.60, expo:1.0},
+  aurora:     {light:false,ramp:'dark', fog:0x06181c, style:2, top:0x06222a, bot:0x020a12, tint:0x36c088, bloom:0.60, expo:1.0},
+  psychedelic:{light:false,ramp:'dark', fog:0x140a24, style:4, top:0x1a0730, bot:0x09031b, tint:0xccccee, bloom:0.72, expo:1.02},
+  fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0x8a3a0c, bot:0x070200, tint:0xcc7a2a, bloom:0.72, expo:1.02}
 };
 function applyTheme(t){
   const cfg=THEMES[t]||THEMES.dark; state.theme=t;
