@@ -361,6 +361,8 @@
       <button data-th="psychedelic">Psychedelic</button>
       <button data-th="fire">Fire</button>
     </div>
+    <div class="row" style="margin-top:11px"><span>Glow (bloom)</span><span class="val" id="v-glow">1.0×</span></div>
+    <input type="range" id="s-glow" min="0" max="2.5" step="0.05" value="1">
   </div>
 
   <div class="grp">
@@ -441,6 +443,13 @@
 
 <div id="vlabels"></div>
 <script src="three.min.js"></script>
+<!-- v2.3 real engine: Three.js r128 postprocessing (bloom) from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script src="torah_data.js"></script>
 <script src="torah_en.js"></script>
 <script src="torah_gloss.js"></script>
@@ -575,9 +584,39 @@ const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2));
 renderer.setSize(innerWidth,innerHeight);
 renderer.setClearColor(BG,1);
+renderer.toneMapping=THREE.ACESFilmicToneMapping; renderer.toneMappingExposure=1.15;
 document.body.appendChild(renderer.domElement);
 
-const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,8000);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,30000);
+
+/* ===== v2.3 real engine: in-scene animated backdrop (composites correctly with bloom) ===== */
+const bgU={uTime:{value:0},uTop:{value:new THREE.Color(0x0b0e18)},uBot:{value:new THREE.Color(0x05060d)},
+  uTint:{value:new THREE.Color(0x5a6cff)},uStyle:{value:0.0}};
+const bgMat=new THREE.ShaderMaterial({uniforms:bgU,side:THREE.BackSide,depthWrite:false,depthTest:false,fog:false,toneMapped:false,
+  vertexShader:'varying vec3 vDir; void main(){ vDir=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader:`precision highp float; uniform float uTime,uStyle; uniform vec3 uTop,uBot,uTint; varying vec3 vDir;
+    vec3 hue(float h){ return clamp(abs(mod(h*6.0+vec3(0.0,4.0,2.0),6.0)-3.0)-1.0,0.0,1.0); }
+    void main(){
+      float t=clamp(vDir.y*0.5+0.5,0.0,1.0);
+      vec3 col=mix(uBot,uTop,t);
+      if(uStyle>3.5){ float h=0.5+0.5*sin(uTime*0.06+vDir.x*2.2+vDir.y*1.4); col=mix(col,hue(h)*0.55+0.12,0.6); }
+      else if(uStyle>2.5){ float f=pow(1.0-t,1.4); col=mix(uBot,uTop,f); col+=vec3(0.45,0.14,0.0)*pow(max(0.0,sin(uTime*0.7+vDir.x*3.0))*(1.0-t),2.0); }
+      else if(uStyle>1.5){ float a=0.5+0.5*sin(uTime*0.35+vDir.x*3.0+vDir.y*2.0); col+=uTint*0.20*a*smoothstep(0.15,0.85,t); }
+      else if(uStyle>0.5){ float n=0.5+0.5*sin(vDir.x*9.0)*sin(vDir.y*7.0+uTime*0.12); col+=uTint*0.06*n; }
+      gl_FragColor=vec4(col,1.0);
+    }`});
+const bgMesh=new THREE.Mesh(new THREE.SphereGeometry(12000,32,16),bgMat);
+bgMesh.frustumCulled=false; bgMesh.renderOrder=-10; scene.add(bgMesh);
+
+let composer=null, bloomPass=null;
+function setupComposer(){
+  if(!(THREE.EffectComposer&&THREE.RenderPass&&THREE.UnrealBloomPass)) return false;
+  composer=new THREE.EffectComposer(renderer);
+  composer.addPass(new THREE.RenderPass(scene,camera));
+  bloomPass=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),0.85,0.6,0.15);
+  composer.addPass(bloomPass);
+  return true;
+}
 
 /* base "page" plane at z=0 with hairline edge frame — refit per layout mode */
 let basePlane, baseEdges;
@@ -823,7 +862,7 @@ function updateLabels(){
 const state={exag:1, curve:'sqrt', floor:1, ceil:400, sofit:false, size:3.6,
   chapters:new Set(), only:false, textActive:false, mode:'scroll', layers:false,
   books:new Set([0,1,2,3,4]), layout:'string', tour:false, glyph:false, gran:'letter',
-  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME};
+  colorBy:'gem', tourSpeed:1, tourMode:'flyby', theme:THEME, bloom:1};
 
 function curveFn(v){
   switch(state.curve){
@@ -1450,7 +1489,10 @@ function applyHash(){ const h=location.hash.slice(1); if(!h) return false;
 /* ---- resize + render loop ------------------------------------------------- */
 addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight); drawLegend();
+  renderer.setSize(innerWidth,innerHeight);
+  if(composer) composer.setSize(innerWidth,innerHeight);
+  if(bloomPass) bloomPass.setSize(innerWidth,innerHeight);
+  drawLegend();
 });
 let introT=REDUCED?1:0;
 function animate(){
@@ -1470,7 +1512,8 @@ function animate(){
   else if(!userMoved && !REDUCED){ sph.theta+=0.0007; applyCam(); }
   if(hPending) doHover();
   updateLabels();
-  renderer.render(scene,camera);
+  bgMesh.position.copy(camera.position); bgU.uTime.value=u.uTime.value;
+  if(composer) composer.render(); else renderer.render(scene,camera);
 }
 
 /* ===== v2.0 · draggable, persistent panels ===== */
@@ -1503,21 +1546,29 @@ function makeDraggable(id,label){
   dh.addEventListener('pointerup',up); dh.addEventListener('pointercancel',up);
   dh.addEventListener('dblclick',resetLayout);
 }
-/* ---- themes (dark / light / cosmos / aurora / psychedelic / fire) ---- */
+/* ---- themes — now drive the in-scene backdrop + bloom + tone mapping ---- */
+/* style: 0 solid · 1 cosmos · 2 aurora · 3 fire · 4 psychedelic */
 const THEMES={
-  dark:       {light:false,ramp:'dark', solid:0x06070d,fog:0x06070d},
-  light:      {light:true, ramp:'light',solid:0xece6d8,fog:0xece6d8},
-  cosmos:     {light:false,ramp:'dark', solid:null,    fog:0x0a0c1c},
-  aurora:     {light:false,ramp:'dark', solid:null,    fog:0x06181c},
-  psychedelic:{light:false,ramp:'dark', solid:null,    fog:0x140a24},
-  fire:       {light:false,ramp:'dark', solid:null,    fog:0x1a0600}
+  dark:       {light:false,ramp:'dark', fog:0x06070d, style:0, top:0x0b0e1a, bot:0x05060d, tint:0x88a0ff, bloom:0.85, expo:1.15},
+  light:      {light:true, ramp:'light',fog:0xece6d8, style:0, top:0xefe9dc, bot:0xe4ddcb, tint:0xffffff, bloom:0.10, expo:1.0},
+  cosmos:     {light:false,ramp:'dark', fog:0x0a0c1c, style:1, top:0x171b40, bot:0x05060f, tint:0x6a7cff, bloom:1.05, expo:1.2},
+  aurora:     {light:false,ramp:'dark', fog:0x06181c, style:2, top:0x0a3038, bot:0x03101a, tint:0x46e6a0, bloom:1.05, expo:1.2},
+  psychedelic:{light:false,ramp:'dark', fog:0x140a24, style:4, top:0x2a0a44, bot:0x0f0426, tint:0xffffff, bloom:1.25, expo:1.25},
+  fire:       {light:false,ramp:'dark', fog:0x1a0600, style:3, top:0xff7a1e, bot:0x0c0300, tint:0xffb347, bloom:1.15, expo:1.2}
 };
 function applyTheme(t){
   const cfg=THEMES[t]||THEMES.dark; state.theme=t;
   document.body.className=document.body.className.replace(/\bbg-\S+/g,'').replace(/\blight\b/g,'').trim();
   document.body.classList.add('bg-'+t); if(cfg.light) document.body.classList.add('light');
-  renderer.setClearColor(0x000000,0);   /* transparent: the #bgfx layer paints the background */
+  renderer.setClearColor(cfg.fog,1);
   if(scene.fog) scene.fog.color.setHex(cfg.fog);
+  // backdrop
+  bgU.uStyle.value=cfg.style; bgU.uTop.value.setHex(cfg.top); bgU.uBot.value.setHex(cfg.bot); bgU.uTint.value.setHex(cfg.tint);
+  // engine: tone mapping + bloom per theme
+  renderer.toneMapping = cfg.light?THREE.NoToneMapping:THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=cfg.expo;
+  if(bloomPass){ bloomPass.strength=(state.bloom!=null?state.bloom:1)*cfg.bloom; }
+  scene.traverse(o=>{ if(o.material&&'needsUpdate' in o.material) o.material.needsUpdate=true; });
   STOPS = cfg.ramp==='light'?STOPS_LIGHT:STOPS_DARK;
   if(material&&material.uniforms.uLight) material.uniforms.uLight.value=cfg.light?1:0;
   const lb=$('legbar'); if(lb) lb.style.background=cfg.ramp==='light'?LEGGRAD_LIGHT:LEGGRAD_DARK;
@@ -1526,6 +1577,8 @@ function applyTheme(t){
   if(state.mode==='meaning'||state.mode==='map') applyEnrich(); else recompute();
 }
 document.querySelectorAll('#seg-theme button').forEach(b=>b.addEventListener('click',()=>applyTheme(b.dataset.th)));
+bindRange('s-glow','v-glow',v=>parseFloat(v).toFixed(2)+'×',v=>{ state.bloom=v;
+  if(bloomPass) bloomPass.strength=v*((THEMES[state.theme]||THEMES.dark).bloom); });
 
 function setupPanels(){
   PANELS.forEach(([id,label])=>makeDraggable(id,label));
@@ -1539,6 +1592,8 @@ const _hashed=applyHash();
 if(!_hashed){ recompute(); fitPlane(state.mode); fitView(state.mode); }
 else if(state.mode!=='meaning'&&state.mode!=='map'){ fitPlane(state.mode); fitView(state.mode); }
 setupPanels();
+setupComposer();
+const _bgfx=$('bgfx'); if(_bgfx) _bgfx.style.display='none';   /* backdrop is now in-scene */
 applyTheme(state.theme);
 setAxes(state.mode);
 animate();
