@@ -985,15 +985,16 @@ const WORD_RECT={}; let wordAtlasTex=null;
 let wordMesh=null, wordGeom=null;
 (function buildWordMesh(){
   wordGeom=new THREE.InstancedBufferGeometry();
-  const quad=new Float32Array([-0.5,-0.5, 0.5,-0.5, 0.5,0.5, -0.5,-0.5, 0.5,0.5, -0.5,0.5]);
-  wordGeom.setAttribute('quad',new THREE.BufferAttribute(quad,2));
+  /* a unit quad as the 'position' attribute (z=0) — renderer needs 'position' to count vertices */
+  const quad=new Float32Array([-0.5,-0.5,0, 0.5,-0.5,0, 0.5,0.5,0, -0.5,-0.5,0, 0.5,0.5,0, -0.5,0.5,0]);
+  wordGeom.setAttribute('position',new THREE.BufferAttribute(quad,3));
   const mat=new THREE.ShaderMaterial({ transparent:true, depthTest:true, depthWrite:false, toneMapped:false,
     uniforms:{ uAtlas:{value:wordAtlasTex}, uPx:{value:0.05}, uColor:{value:new THREE.Color(0xffffff)} },
-    vertexShader:`attribute vec2 quad; attribute vec3 iPos; attribute vec4 iUV; attribute float iAspect;
+    vertexShader:`attribute vec3 iPos; attribute vec4 iUV; attribute float iAspect;
       uniform float uPx; varying vec2 vUv;
       void main(){ vec4 mv=modelViewMatrix*vec4(iPos,1.0); float h=uPx*(-mv.z);
-        mv.xy += quad*vec2(h*iAspect, h); gl_Position=projectionMatrix*mv;
-        vUv=iUV.xy + (quad+0.5)*iUV.zw; }`,
+        mv.xy += position.xy*vec2(h*iAspect, h); gl_Position=projectionMatrix*mv;
+        vUv=iUV.xy + (position.xy+0.5)*iUV.zw; }`,
     fragmentShader:`uniform sampler2D uAtlas; uniform vec3 uColor; varying vec2 vUv;
       void main(){ float a=texture2D(uAtlas,vUv).a; if(a<0.28) discard; gl_FragColor=vec4(uColor,a); }`});
   wordMesh=new THREE.Mesh(wordGeom,mat); wordMesh.frustumCulled=false; wordMesh.visible=false; wordMesh.renderOrder=4;
