@@ -308,6 +308,21 @@
   #howinfo{margin-top:9px;font-size:10.7px;line-height:1.5;color:var(--ink);opacity:.72;
     border-left:2px solid rgba(227,178,60,.4);padding:2px 0 2px 9px}
   #howinfo b{color:var(--gold,#e3b23c);font-weight:600;opacity:.95}
+  /* ===== v3.8 · speed-reader (RSVP) ===== */
+  #rsvp{position:fixed;left:322px;right:0;top:0;bottom:0;z-index:6;display:none;
+    align-items:center;justify-content:center;background:#06070d;overflow:hidden}
+  body.light #rsvp{background:#efeadc}
+  #rsvp .rw-word{font-family:var(--serif,'Georgia',serif);font-size:11vw;line-height:1;color:#fff;direction:rtl;
+    text-shadow:0 0 50px rgba(227,178,60,.55),0 0 14px rgba(255,255,255,.4)}
+  body.light #rsvp .rw-word{color:#3a2410;text-shadow:0 0 30px rgba(227,178,60,.5)}
+  #rsvp .rw-ref{position:absolute;top:16%;left:0;right:0;text-align:center;font-family:var(--sans,sans-serif);
+    font-size:13px;letter-spacing:.28em;text-transform:uppercase;color:var(--ink);opacity:.5}
+  #rsvp .rw-en{position:absolute;bottom:20%;left:0;right:0;text-align:center;font-family:var(--sans,sans-serif);
+    font-size:16px;color:var(--ink);opacity:.6;font-style:italic}
+  #rsvp .rw-flash{position:absolute;inset:0;pointer-events:none;opacity:0;
+    background:radial-gradient(circle at 50% 50%,rgba(255,244,210,.85),rgba(255,210,120,.35) 35%,transparent 65%)}
+  #rsvp .rw-flash.go{animation:rsvpflash 1.1s ease-out}
+  @keyframes rsvpflash{0%{opacity:0;transform:scale(.6)}18%{opacity:1}100%{opacity:0;transform:scale(1.5)}}
 </style>
 </head>
 <body>
@@ -335,6 +350,7 @@
     <button data-m="spiral">Spiral</button>
     <button data-m="meaning">Topography</button>
     <button data-m="map">Map</button>
+    <button data-m="reader">Read aloud</button>
   </div>
   <div id="howinfo"></div>
   <button id="tour" class="act" style="margin-top:9px;width:100%">▶ Fly-through tour</button>
@@ -1075,6 +1091,15 @@ function onMapClick(e){ const cell=mapCellAt(e); if(!cell)return; const info=GCH
   const rd=document.getElementById('reader'); if(rd&&rd.classList.contains('hidden')){ rd.classList.remove('hidden'); const tb=document.getElementById('sb-textbtn'); if(tb)tb.classList.add('on'); }
   if(typeof readerTo==='function') readerTo(info.b,info.c,1); }
 
+/* ===== v3.8 · speed-reader (RSVP): one word at a time, centred, driven by the read-aloud chant ===== */
+let rsvpWordEl=null, rsvpRefEl=null, rsvpEnEl=null, rsvpFlashEl=null, rsvpLastGch=null;
+(function buildRsvp(){ const d=document.createElement('div'); d.id='rsvp';
+  d.innerHTML='<div class="rw-ref"></div><div class="rw-word"></div><div class="rw-en"></div><div class="rw-flash"></div>';
+  document.body.appendChild(d);
+  rsvpRefEl=d.querySelector('.rw-ref'); rsvpWordEl=d.querySelector('.rw-word'); rsvpEnEl=d.querySelector('.rw-en'); rsvpFlashEl=d.querySelector('.rw-flash'); })();
+function rsvpShow(he,en,ref){ if(rsvpWordEl){ rsvpWordEl.textContent=he; rsvpRefEl.textContent=ref; rsvpEnEl.textContent=en||''; } }
+function rsvpFlash(){ if(!rsvpFlashEl)return; rsvpFlashEl.classList.remove('go'); void rsvpFlashEl.offsetWidth; rsvpFlashEl.classList.add('go'); }
+
 /* ---- dynamic peak word labels: the over-represented word at each surface peak ---- */
 const vlab=document.getElementById('vlabels');
 const labelPool=[]; for(let i=0;i<8;i++){const el=document.createElement('div');el.className='vlabel';el.style.display='none';vlab.appendChild(el);labelPool.push(el);}
@@ -1192,8 +1217,10 @@ function recompute(){
       const pi=wordPOS[pWid[k]], pc=(pi===255?POS_OTHER:POS_COL_ARR[pi]);
       colA.array[k*3]=pc[0]; colA.array[k*3+1]=pc[1]; colA.array[k*3+2]=pc[2];
     } else {
-      const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.22;
-      colA.array[k*3]=rgb[0]*(1-mx)+t[0]*mx; colA.array[k*3+1]=rgb[1]*(1-mx)+t[1]*mx; colA.array[k*3+2]=rgb[2]*(1-mx)+t[2]*mx;
+      const rgb=ramp(hv), t=BOOK_TINT[b], mx=0.13, B=1.5;   /* brighter so bloom makes gematria glow like POS */
+      colA.array[k*3]=Math.min(1,(rgb[0]*(1-mx)+t[0]*mx)*B);
+      colA.array[k*3+1]=Math.min(1,(rgb[1]*(1-mx)+t[1]*mx)*B);
+      colA.array[k*3+2]=Math.min(1,(rgb[2]*(1-mx)+t[2]*mx)*B);
     }
   }
   posA.needsUpdate=true; colA.needsUpdate=true;
@@ -1519,10 +1546,12 @@ function fitView(m){
   userMoved=false; applyCam();
 }
 function setMode(m){
-  state.mode=m;
-  const surf=(m==='meaning'), mapMode=(m==='map');
-  points.visible=!(surf||mapMode); enrGroup.visible=surf;
+  const prev=state.mode; state.mode=m;
+  const surf=(m==='meaning'), mapMode=(m==='map'), rsvpMode=(m==='reader');
+  points.visible=!(surf||mapMode||rsvpMode); enrGroup.visible=surf;
   const mv=document.getElementById('mapview'); if(mv) mv.style.display=mapMode?'block':'none';
+  const rv=document.getElementById('rsvp'); if(rv) rv.style.display=rsvpMode?'flex':'none';
+  if(prev==='reader' && !rsvpMode && typeof stopChant==='function') stopChant();
   if(typeof updateFX==='function') updateFX();
   if(surf){
     basePlane.visible=false; baseEdges.visible=false;
@@ -1534,6 +1563,9 @@ function setMode(m){
     applyCam();
   } else if(mapMode){
     basePlane.visible=false; baseEdges.visible=false; drawMap();
+  } else if(rsvpMode){
+    basePlane.visible=false; baseEdges.visible=false;
+    if(typeof beginChant==='function') beginChant();   /* read aloud, one word at a time */
   } else {
     recompute(); fitPlane(m); fitView(m);
   }
@@ -1543,14 +1575,16 @@ function setAxes(m){ const el=$('axes'); if(!el)return;
   el.textContent=({terrain:'X line · Y verse · Z gematria', scroll:'wrapped scroll · height = gematria',
     sphere:'sphere by sequence · radius = gematria', spiral:'coil by sequence · radius = gematria',
     meaning:'chapter × '+(state.gran==='word'?'value band':'letter')+' · height = enrichment',
-    map:'top-down heatmap · colour = enrichment'})[m]||''; }
+    map:'top-down heatmap · colour = enrichment',
+    reader:'speed-reader · one word at a time, read aloud'})[m]||''; }
 const HOWINFO={
   terrain:'<b>Terrain</b> — every letter laid out like a page (X = position in line, Y = verse) and raised on Z by its gematria. A literal relief of the text.',
   scroll:'<b>Scroll</b> — the letters wrapped into continuous columns like a Torah scroll; height = gematria. One long ribbon you read across.',
   sphere:'<b>Sphere</b> — every letter placed on a globe by its order in the sequence (even Fibonacci spread); radius = gematria. The whole Torah as one orb.',
   spiral:'<b>Spiral</b> — letters wound onto a vertical coil by sequence; radius = gematria. Use the tour to fly up through the centre.',
   meaning:'<b>Topography</b> — a statistical landscape: rows = chapters, columns = letters (or value bands). Height = <b>enrichment</b> (how over/under-represented each is vs chance). Peaks = excess, valleys = scarcity.',
-  map:'<b>Map</b> — the same chapter×letter enrichment as a flat heatmap. <b>Red</b> = over-represented, <b>blue</b> = under. Hover a cell for its word & value; click to jump the Text panel there; toggle Cluster to group similar chapters/letters.'};
+  map:'<b>Map</b> — the same chapter×letter enrichment as a flat heatmap. <b>Red</b> = over-represented, <b>blue</b> = under. Hover a cell for its word & value; click to jump the Text panel there; toggle Cluster to group similar chapters/letters.',
+  reader:'<b>Read aloud</b> — a speed-reader: one word at a time, centred, chanted out loud (set the voice & tempo in Audio). A glow flashes at the end of each chapter. Click a word in the Text panel first to start there.'};
 function setHowInfo(m){ const el=document.getElementById('howinfo'); if(el) el.innerHTML=HOWINFO[m]||''; }
 let userMoved=false;
 const dom=renderer.domElement;
@@ -1927,12 +1961,14 @@ async function chantFrom(vi,wj){
     const V=VERSES[i]; if(!state.books.has(V.b)) continue;
     if(!loop && V.b!==startBook) break;
     const {words,teams,accs}=alignVerse(i), startWid=pWid[V.gi], vgch=pGChap[V.gi];
+    if(state.mode==='reader'){ if(rsvpLastGch!==null && vgch!==rsvpLastGch) rsvpFlash(); rsvpLastGch=vgch; }
     if(sync){ const rv=$('reader-body').querySelector('.rv[data-vi="'+i+'"]'); if(rv) rv.scrollIntoView({block:'center',behavior:'smooth'}); }
     $('au-now').textContent=BOOK_SHORT[V.b]+' '+V.c+':'+V.v;
     for(let j=(i===vi?wj:0);j<words.length;j++){
       if(tok!==chant.token) break;
       const last=(j===words.length-1); let motif=last?MOTIF.sof:(MOTIF[teams[j]]||MOTIF.conj);
       if(sync) chantHighlight(startWid+j,vgch);
+      if(state.mode==='reader'){ const gl=GLOSS[words[j]]; rsvpShow(stripTeam(accs[j])||words[j], gl&&gl[0]?gl[0]:'', BOOK_SHORT[V.b]+' '+V.c+':'+V.v); }
       if(useSpeech){
         const txt=stripTeam(accs[j]) || words[j];
         const rate=Math.max(0.5,Math.min(1.3,(state.auTempo||55)/60));
@@ -1949,14 +1985,17 @@ async function chantFrom(vi,wj){
   if(tok===chant.token) stopChant();
 }
 function verseIndexOf(b,c,v){ for(let i=0;i<VERSES.length;i++){const V=VERSES[i]; if(V.b===b&&V.c===c&&V.v===v)return i;} return -1; }
-$('au-play').addEventListener('click',()=>{
-  if(chant.playing){ stopChant(); return; }
+function beginChant(){
   let vi=-1,wj=0;
   if(typeof focusK!=='undefined' && focusK>=0){ const idx=verseIndexOf(pBook[focusK],pChap[focusK],pVerse[focusK]);
     if(idx>=0){ vi=idx; wj=Math.max(0,pWid[focusK]-pWid[VERSES[idx].gi]); } }
   if(vi<0) vi=VERSES.findIndex(V=>state.books.has(V.b));
   if(vi<0) vi=0;
-  chantFrom(vi,wj);
+  rsvpLastGch=null; chantFrom(vi,wj);
+}
+$('au-play').addEventListener('click',()=>{
+  if(chant.playing){ stopChant(); return; }
+  beginChant();
 });
 $('au-stop').addEventListener('click',stopChant);
 $('au-voice').addEventListener('change',e=>{ state.auVoice=e.target.value;
